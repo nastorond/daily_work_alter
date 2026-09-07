@@ -72,6 +72,16 @@ pub fn should_notify(cfg: &crate::config::Config, state: &AppState, now: DateTim
         }
     }
 
+    // Guard against popping outside working hours: on a machine that woke from
+    // sleep long after the catch-up window, or with an unusually large
+    // catchUpHours, this keeps the reminder from surfacing before the workday
+    // has started. 실행계획.md 3.2.
+    if let Some(start) = parse_time_today(&cfg.work.start_time, now) {
+        if now < start {
+            return false;
+        }
+    }
+
     let Some(end) = parse_time_today(&cfg.work.end_time, now) else {
         return false;
     };

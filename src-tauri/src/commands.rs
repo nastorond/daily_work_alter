@@ -73,6 +73,11 @@ pub fn snooze(app: AppHandle, state: State<AppData>) {
         let mut st = state.state.lock().unwrap();
         let until = Local::now() + Duration::minutes(cfg.notify.snooze_minutes as i64);
         st.snooze_until = Some(until.to_rfc3339());
+        // tick() stamps last_notified_date when it pops the window, and
+        // should_notify() treats that as "already handled today". Snoozing has to
+        // clear it or the reminder would never come back — the snooze_until check
+        // above is what gates the retry from here on.
+        st.last_notified_date = None;
         let _ = crate::state::save(&st);
     }
     window::destroy_window(&app);
