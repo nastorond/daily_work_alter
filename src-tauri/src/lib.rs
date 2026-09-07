@@ -1,6 +1,7 @@
 mod autostart;
 mod commands;
 mod config;
+mod devtools;
 mod notify;
 mod scheduler;
 mod shortcut;
