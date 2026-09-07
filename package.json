@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
-    "kill": "taskkill /F /IM dailyworkalter.exe 2>nul & exit 0",
+    "kill": "taskkill /F /IM dailyworkalter.exe 2>nul & taskkill /F /IM DailyWorkAlter.exe 2>nul & exit 0",
     "dev": "npm run kill & tauri dev",
-    "build": "npm run kill & tauri build"
+    "build": "npm run kill & tauri build --no-bundle",
+    "build:installer": "npm run kill & tauri build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
