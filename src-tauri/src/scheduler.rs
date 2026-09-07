@@ -45,9 +45,10 @@ pub fn view_mode_for(cfg: &crate::config::Config, now: DateTime<Local>) -> ViewM
     }
 }
 
-/// Implements the judgement order from 실행계획.md 3.1: workday → not-skipped →
-/// no-content-yet → not-already-notified-today → not-snoozed → inside the
-/// [endTime - minutesBefore, endTime + catchUpHours] window.
+/// Judgement order, short-circuiting on the first rule that says no:
+/// workday -> not skipped -> nothing written yet -> not already notified today
+/// -> not snoozed -> after startTime -> inside the notify window
+/// [endTime - minutesBefore, endTime + catchUpHours].
 pub fn should_notify(cfg: &crate::config::Config, state: &AppState, now: DateTime<Local>) -> bool {
     let today = now.format("%Y-%m-%d").to_string();
     let iso_weekday = now.weekday().number_from_monday() as u8;
@@ -75,7 +76,7 @@ pub fn should_notify(cfg: &crate::config::Config, state: &AppState, now: DateTim
     // Guard against popping outside working hours: on a machine that woke from
     // sleep long after the catch-up window, or with an unusually large
     // catchUpHours, this keeps the reminder from surfacing before the workday
-    // has started. 실행계획.md 3.2.
+    // has started.
     if let Some(start) = parse_time_today(&cfg.work.start_time, now) {
         if now < start {
             return false;

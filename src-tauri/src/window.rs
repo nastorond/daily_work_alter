@@ -14,8 +14,10 @@ fn route_for(mode: ViewMode) -> &'static str {
 }
 
 /// Destroys any existing main window and creates a fresh one. We destroy rather
-/// than hide/reuse so the WebView2 process is actually torn down between pops —
-/// see 실행계획.md "설계상 중요한 정정" for why this matters for idle RAM.
+/// than hide/reuse so the WebView2 process is actually torn down between pops.
+/// That is what keeps idle RAM around 20MB: for the ~23.5h/day this app spends
+/// doing nothing, only the Rust process is resident. It is also why the schedule
+/// timer lives in Rust — with no window there is no JS to run it.
 pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) {
     destroy_window(app);
 
@@ -62,7 +64,8 @@ pub fn show_settings(app: &AppHandle) {
     show_window(app, mode, true);
 }
 
-/// First-run only: a trimmed-down settings form (4.5 in 실행계획.md).
+/// First-run only: a trimmed-down settings form asking just for work hours and
+/// the weekly-summary day. Also reachable from the debug-only tray test menu.
 pub fn show_onboarding(app: &AppHandle) {
     destroy_window(app);
     let win = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("index.html?view=onboarding".into()))

@@ -57,9 +57,32 @@ fn frontmatter_value<'a>(fm: &'a str, key: &str) -> Option<&'a str> {
         .map(|v| v.trim())
 }
 
+/// Nesting is carried inside the item string itself: a child item starts with
+/// two spaces. Only one level is supported, so deeper indentation clamps to it.
+/// Keeping items as plain strings means the Rust <-> JS command signatures and
+/// the on-disk format stay unchanged.
+pub const CHILD_PREFIX: &str = "  ";
+
+/// Splits an item into (is_child, trimmed text).
+pub fn split_depth(item: &str) -> (bool, &str) {
+    match item.strip_prefix(CHILD_PREFIX) {
+        Some(rest) => (true, rest.trim()),
+        None => (false, item.trim()),
+    }
+}
+
+/// Leading-whitespace width of a line, counting a tab as two columns.
+fn indent_width(line: &str) -> usize {
+    line.chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .map(|c| if c == '\t' { 2 } else { 1 })
+        .sum()
+}
+
 fn parse_body(body: &str) -> Vec<String> {
     body.lines()
         .filter_map(|line| {
+            let indent = indent_width(line);
             let t = line.trim();
             if t.is_empty() {
                 return None;
@@ -67,10 +90,13 @@ fn parse_body(body: &str) -> Vec<String> {
             let stripped = t.strip_prefix("- ").or_else(|| t.strip_prefix('-')).unwrap_or(t);
             let stripped = stripped.trim();
             if stripped.is_empty() {
-                None
-            } else {
-                Some(stripped.to_string())
+                return None;
             }
+            Some(if indent >= CHILD_PREFIX.len() {
+                format!("{CHILD_PREFIX}{stripped}")
+            } else {
+                stripped.to_string()
+            })
         })
         .collect()
 }
@@ -123,12 +149,15 @@ pub fn write_log(cfg: &Config, date: &str, items: &[String]) -> std::io::Result<
     out.push_str(&format!("updated: {updated}\n"));
     out.push_str("---\n\n");
     for item in items {
-        let item = item.trim();
-        if item.is_empty() {
+        let (is_child, text) = split_depth(item);
+        if text.is_empty() {
             continue;
         }
+        if is_child {
+            out.push_str(CHILD_PREFIX);
+        }
         out.push_str("- ");
-        out.push_str(item);
+        out.push_str(text);
         out.push('\n');
     }
     fs::write(path, out)
@@ -172,4 +201,63 @@ pub fn read_week(cfg: &Config, anchor: &str) -> Vec<DayLog> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn items(body: &str) -> Vec<String> {
+        parse_body(body)
+    }
+
+    #[test]
+    fn flat_items_keep_no_indent() {
+        assert_eq!(items("- 가\n- 나"), vec!["가", "나"]);
+    }
+
+    #[test]
+    fn two_spaces_make_a_child() {
+        assert_eq!(items("- 부모\n  - 자식"), vec!["부모", "  자식"]);
+    }
+
+    #[test]
+    fn a_tab_counts_as_a_child() {
+        assert_eq!(items("- 부모\n\t- 자식"), vec!["부모", "  자식"]);
+    }
+
+    #[test]
+    fn deeper_indent_clamps_to_one_level() {
+        assert_eq!(items("- 부모\n      - 손자"), vec!["부모", "  손자"]);
+    }
+
+    #[test]
+    fn blank_and_bare_dash_lines_are_dropped() {
+        assert_eq!(items("- 가\n\n-\n-   \n- 나"), vec!["가", "나"]);
+    }
+
+    #[test]
+    fn bullet_prefix_is_optional() {
+        assert_eq!(items("가\n  나"), vec!["가", "  나"]);
+    }
+
+    #[test]
+    fn split_depth_strips_the_child_prefix() {
+        assert_eq!(split_depth("부모"), (false, "부모"));
+        assert_eq!(split_depth("  자식"), (true, "자식"));
+    }
+
+    #[test]
+    fn frontmatter_is_split_off_when_present() {
+        let (fm, body) = split_frontmatter("---\ndate: 2026-09-07\n---\n\n- 가\n");
+        assert!(fm.unwrap().contains("date: 2026-09-07"));
+        assert_eq!(parse_body(body), vec!["가"]);
+    }
+
+    #[test]
+    fn missing_frontmatter_treats_everything_as_body() {
+        let (fm, body) = split_frontmatter("- 가\n- 나\n");
+        assert!(fm.is_none());
+        assert_eq!(parse_body(body), vec!["가", "나"]);
+    }
 }

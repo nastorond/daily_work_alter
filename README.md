@@ -1,7 +1,272 @@
-# Tauri + Vanilla
+# DailyWorkAlter
 
-This template should help get you started developing with Tauri in vanilla HTML, CSS and Javascript.
+퇴근 30분 전에 알아서 떠서 오늘 한 일을 기록하게 하는 Windows 트레이 앱.
+주에 한 번, 지정한 요일에는 그 주 전체를 펼쳐 보여주고 주간보고용 텍스트로 복사해준다.
 
-## Recommended IDE Setup
+평소에는 아무것도 안 해도 된다. 트레이에 상주하다가 시간이 되면 창이 뜨고, 쓰고 닫으면 끝.
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+```
+┌──────────────────────────────────────────┐
+│  2026-09-07 (월)                    ⚙ ✕  │
+├──────────────────────────────────────────┤
+│  오늘 한 일                              │
+│  ┌────────────────────────────────────┐  │
+│  │ - OCR 전처리 리팩터링              │  │
+│  │   - 배치 큐 타임아웃 원인 파악     │  │
+│  │ - |                                │  │
+│  └────────────────────────────────────┘  │
+│                                          │
+│  ▸ 어제 (09-06) 참고                     │
+│                                          │
+│  [10분 뒤 다시] [오늘 건너뛰기] [저장]   │
+└──────────────────────────────────────────┘
+```
+
+---
+
+## 특징
+
+- **상주 메모리 약 20MB** — 창을 닫을 때 숨기지 않고 파기해서 WebView2 프로세스를 내린다.
+  하루 대부분의 시간엔 Rust 프로세스 하나만 남는다
+- **단일 exe 약 5MB** — 설치 과정 없음. WebView2는 Windows 11에 기본 탑재
+- **기록은 순수 마크다운** — 앱 없이도 읽고 검색하고 옮길 수 있다
+- **로컬 전용** — 네트워크 통신도, 계정도, 동기화도 없다
+
+## 설치
+
+```
+npm install
+npm run build
+```
+
+`src-tauri/target/release/dailyworkalter.exe` 가 나온다. 이 파일 하나만 있으면 된다
+(프론트엔드 리소스는 exe 안에 들어 있다).
+
+원하는 폴더에 두고 한 번 실행하면 온보딩에서 출퇴근 시간을 물어보고, 로그인 시 자동 실행이
+등록된 뒤 트레이로 내려간다. 이후로는 부팅하면 알아서 떠 있다.
+
+> **자동 실행은 실행된 위치를 기억한다.** exe를 옮기려면 옮긴 다음 한 번 실행해서 경로를
+> 갱신해야 한다. 빌드 폴더(`target/`)에 두고 쓰는 동안엔 `cargo clean`에 주의.
+
+서명이 없어서 첫 실행 때 SmartScreen이 막는다. **추가 정보 → 실행**을 누르면 그 뒤로는 안 나온다.
+
+## 사용법
+
+### 입력
+
+마크다운 문법을 몰라도 된다. 한 줄에 하나씩 쓰면 `- `는 자동으로 붙는다.
+
+| 키 | 동작 |
+|---|---|
+| `Enter` | 다음 줄에 새 항목 (현재 들여쓰기 유지) |
+| `Tab` | 한 단계 들여쓰기 (하위 항목) |
+| `Shift+Tab` | 내어쓰기 |
+| `Ctrl+Enter` | 저장하고 닫기 |
+| `Esc` | 저장하고 닫기 |
+| `Ctrl+Alt+D` | 아무 때나 창 열기 (전역) |
+
+들여쓰기는 **한 단계까지만** 지원한다. 헤딩이나 코드블록은 지원하지 않는다 —
+업무 기록에는 과하고, 주간 요약에서 5일치를 모을 때 구조가 균일한 게 낫다.
+
+입력 중 500ms마다 자동 저장되므로 강제 종료나 정전에도 직전까지는 남는다.
+
+### 주간 요약
+
+지정한 요일(기본 금요일)에는 그 주 전체가 펼쳐진 화면이 뜬다. 과거 요일을 클릭하면 그 자리에서
+고칠 수 있고, **[주간 전체 복사]** 를 누르면 아래 형식으로 클립보드에 들어간다.
+
+```markdown
+## 2026년 37주차 (09-07 ~ 09-11)
+
+### 09-07 (월)
+- OCR 전처리 리팩터링
+  - 배치 큐 타임아웃 원인 파악
+
+### 09-08 (화)
+- API 응답 스키마 정리
+```
+
+### 트레이 메뉴
+
+```
+지금 작성하기
+이번 주 보기
+──────────────
+설정
+config.json 열기
+로그 폴더 열기
+──────────────
+테스트 ▸           ← 디버그 빌드에서만
+──────────────
+지금 알림 테스트
+종료
+```
+
+Windows 11은 새 트레이 아이콘을 기본으로 숨긴다. 시계 왼쪽 **`^`** 를 누르면 있고,
+작업표시줄로 드래그하면 고정된다.
+
+---
+
+## 데이터
+
+전부 로컬 파일. 동기화도 백업도 없다 — 필요하면 폴더를 복사하면 된다.
+
+```
+%APPDATA%\DailyWorkAlter\
+├─ config.json          설정. 직접 편집 가능
+├─ state.json           앱 내부 상태 (스누즈 시각 등). 건드릴 필요 없음
+└─ logs\
+    ├─ 2026-09-07.md
+    └─ 2026-09-08.md
+```
+
+`logs/2026-09-07.md`:
+
+```markdown
+---
+date: 2026-09-07
+weekday: 월
+created: 2026-09-07T17:31:04+09:00
+updated: 2026-09-07T17:38:22+09:00
+---
+
+- OCR 파이프라인 전처리 단계 리팩터링
+  - 배치 큐 타임아웃 원인 파악
+- 주간 배포 리뷰 참석
+```
+
+frontmatter는 관대하게 파싱한다. 손으로 고쳐도, 아예 없어도 본문은 읽힌다.
+
+### config.json
+
+설정 창에서 바꿔도 되고 파일을 직접 고쳐도 된다. **직접 고치면 앱 재시작 없이 반영된다**
+(파일을 감시한다). 문법을 깨뜨리면 이전 설정을 유지하고 토스트로만 알린다.
+
+```json
+{
+  "version": 1,
+  "work": {
+    "startTime": "09:00",
+    "endTime": "18:00",
+    "workdays": [1, 2, 3, 4, 5]
+  },
+  "notify": {
+    "minutesBefore": 30,
+    "snoozeMinutes": 10,
+    "catchUpHours": 4
+  },
+  "weekly": {
+    "enabled": true,
+    "mode": "fixedDay",
+    "day": 5
+  },
+  "hotkey": "CommandOrControl+Alt+D",
+  "autostart": true,
+  "logDir": null
+}
+```
+
+| 키 | 설명 |
+|---|---|
+| `work.startTime` / `endTime` | 출퇴근 시각 `HH:MM` |
+| `work.workdays` | 근무 요일. **1=월 … 7=일** (ISO 8601) |
+| `notify.minutesBefore` | 퇴근 몇 분 전에 띄울지 |
+| `notify.snoozeMinutes` | "10분 뒤 다시"의 간격 |
+| `notify.catchUpHours` | 절전 등으로 놓쳤을 때 몇 시간까지 늦게라도 띄울지 |
+| `weekly.mode` | `fixedDay`(지정 요일) 또는 `lastWorkday`(그 주 마지막 근무일) |
+| `weekly.day` | `fixedDay`일 때의 요일 |
+| `logDir` | `null`이면 기본 경로, 문자열이면 그 절대경로 |
+
+### 완전 삭제
+
+exe 삭제 + `%APPDATA%\DailyWorkAlter\` 삭제 +
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`의 `DailyWorkAlter` 항목 제거.
+
+---
+
+## 알림이 뜨는 조건
+
+60초마다 아래를 순서대로 판정하고, 하나라도 걸리면 그 tick은 넘어간다.
+
+```
+1. 오늘이 근무 요일인가                          아니면 종료
+2. 오늘을 건너뛰기 했는가                        했으면 종료
+3. 오늘 로그에 이미 내용이 있는가                 있으면 종료
+4. 오늘 이미 띄웠는가                            띄웠으면 종료
+5. 스누즈 중인가                                 중이면 종료
+6. 출근 시간을 지났는가                          아니면 종료
+7. [퇴근-minutesBefore, 퇴근+catchUpHours] 안인가  안이면 창 띄우기
+```
+
+절전이나 재부팅은 따로 감지하지 않는다. 60초 tick과 7번의 시간창이 이미 같은 일을 한다 —
+깨어나면 다음 tick이 판정하고, 시간창을 벗어났으면 안 뜨는 게 맞는 동작이다.
+
+---
+
+## 개발
+
+```
+npm run dev              개발 실행 (핫리로드)
+npm run build            릴리스 exe (--no-bundle)
+npm run build:installer  NSIS 인스톨러까지
+npm run kill             떠 있는 프로세스 종료
+```
+
+**트레이 상주 앱이라 창을 닫아도 프로세스가 안 죽는다.** 그 상태로 재빌드하면 exe가 잠겨
+`os error 5`가 난다. `npm run dev`와 `npm run build`는 기존 프로세스를 먼저 정리한다.
+
+디버그 빌드에는 트레이에 **테스트** 서브메뉴가 붙는다. 17:30이나 금요일까지 기다리지 않고
+화면을 확인하기 위한 것들:
+
+- 온보딩 화면 보기 / 일일·주간 화면 강제 열기
+- 샘플 로그 생성 — 이번 주를 채운다. 오늘과 수요일은 비워서 입력란과
+  `(작성 없음)` 렌더링을 각각 확인할 수 있게 한다
+- 이번 주 로그 삭제 / 알림 상태 초기화
+
+배포 빌드에는 붙지 않는다(`tray.rs`의 `cfg!(debug_assertions)`). 로그를 지우는 메뉴가
+실사용 빌드에 남아 있으면 사고가 나서다.
+
+디버그 빌드는 **자동 실행 레지스트리를 건드리지 않는다**. 그러지 않으면 `npm run dev`가
+로그인 항목을 `target\debug\`로 가로채서, 배포한 exe가 부팅 시 뜨지 않게 된다.
+
+### 구조
+
+```
+src/                       프론트엔드 — 화면 전담
+├─ main.js                  뷰 라우팅 (?view= 쿼리로 진입)
+├─ api.js                   Rust 커맨드 래퍼
+├─ views/                   daily · weekly · settings · onboarding · header
+└─ util/                    date · markdown · bullet-editor
+
+src-tauri/src/             Rust — 타이머·설정·파일 IO
+├─ scheduler.rs             60초 tick, 알림 판정
+├─ window.rs                창 생성/파기, 위치
+├─ tray.rs                  트레이 아이콘·메뉴
+├─ config.rs / state.rs     설정 · 내부 상태
+├─ storage.rs               로그 마크다운 읽기/쓰기
+├─ watcher.rs               config.json 파일 감시
+├─ shortcut.rs / autostart.rs / notify.rs
+└─ devtools.rs              디버그 빌드용 테스트 헬퍼
+```
+
+**타이머가 JS가 아니라 Rust에 있는 이유** — 창을 파기해서 메모리를 회수하는 구조라,
+창이 없는 동안엔 JS가 돌지 않는다. 스케줄링을 JS에 두면 알림이 아예 뜨지 않는다.
+
+### 아이콘 수정
+
+`assets/app-icon.png`(1024×1024)를 고치고 다시 생성한다.
+
+```
+npx tauri icon assets/app-icon.png
+```
+
+`src-tauri/icons/`의 `android/`·`ios/`는 이 앱에 불필요하므로 생성 후 지운다.
+
+---
+
+## 아직 없는 것
+
+- **git 커밋 자동 수집** — 지정한 repo에서 오늘 본인 커밋을 긁어 초안을 채우는 기능.
+  빈 칸을 마주하지 않게 해주는 게 실사용률에 가장 크게 기여할 것으로 보여 1순위 후보
+- 태그와 태그별 통계, 월간·분기 요약
+- 공휴일 달력 연동 (지금은 근무 요일만 본다)

@@ -5,7 +5,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 /// Watches %APPDATA%\DailyWorkAlter\ for changes to config.json so hand edits are
-/// picked up without an app restart. See 4.4 in 실행계획.md.
+/// picked up without an app restart. A parse failure keeps the previous config
+/// and only raises a toast, so a bad hand edit can't wipe the user's settings.
 pub fn spawn(app: AppHandle) {
     std::thread::spawn(move || {
         let (tx, rx) = std::sync::mpsc::channel();

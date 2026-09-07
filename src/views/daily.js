@@ -1,7 +1,8 @@
 import { api } from "../api.js";
 import { mountHeader } from "./header.js";
 import { addDays, shortLabel, todayStr, weekdayKr } from "../util/date.js";
-import { itemsToText, linesToItems } from "../util/markdown.js";
+import { itemsToText, itemToLine, linesToItems } from "../util/markdown.js";
+import { attachBulletEditor } from "../util/bullet-editor.js";
 
 export async function renderDaily(root) {
   const today = todayStr();
@@ -38,7 +39,7 @@ export async function renderDaily(root) {
 
   const yesterdayContent = body.querySelector("#yesterday-ref .content");
   yesterdayContent.textContent =
-    yesterdayLog.items.length > 0 ? yesterdayLog.items.map((i) => `- ${i}`).join("\n") : "작성 없음";
+    yesterdayLog.items.length > 0 ? yesterdayLog.items.map(itemToLine).join("\n") : "작성 없음";
 
   let debounceTimer = null;
   function scheduleAutosave() {
@@ -56,38 +57,7 @@ export async function renderDaily(root) {
     api.closeWindow();
   }
 
-  textarea.addEventListener("focus", () => {
-    if (textarea.value === "") {
-      textarea.value = "- ";
-      textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
-    }
-  });
-
-  textarea.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && e.ctrlKey) {
-      e.preventDefault();
-      saveAndClose();
-      return;
-    }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const value = textarea.value;
-      const insert = "\n- ";
-      textarea.value = value.slice(0, start) + insert + value.slice(end);
-      const pos = start + insert.length;
-      textarea.selectionStart = textarea.selectionEnd = pos;
-      scheduleAutosave();
-      return;
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      saveAndClose();
-    }
-  });
-
-  textarea.addEventListener("input", scheduleAutosave);
+  attachBulletEditor(textarea, { onChange: scheduleAutosave, onSubmit: saveAndClose });
 
   footer.querySelector("#btn-snooze").addEventListener("click", async () => {
     await saveCurrent();

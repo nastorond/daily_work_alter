@@ -236,6 +236,13 @@ button.btn.ghost {
   padding-left: 16px;
 }
 
+/* One level of nesting: child items sit indented under their parent. */
+.week-day .day-items li.child {
+  margin-left: 16px;
+  list-style-type: circle;
+  color: var(--text-dim, inherit);
+}
+
 .week-day .day-items .empty {
   color: var(--text-muted);
   font-style: italic;
