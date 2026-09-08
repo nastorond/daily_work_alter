@@ -22,16 +22,32 @@ pub struct AppData {
     pub state: Mutex<AppState>,
 }
 
+/// Passed on the command line by the autostart registry entry, so a login launch
+/// can be told apart from the user double-clicking the exe.
+const AUTOSTART_FLAG: &str = "--autostart";
+
+fn launched_by_autostart() -> bool {
+    std::env::args().any(|a| a == AUTOSTART_FLAG)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let first_run = !config::exists();
 
     tauri::Builder::default()
+        // Must be registered first. Fires in the *existing* instance when the exe
+        // is launched again; the newcomer exits on its own. A second launch is the
+        // user asking for the window (the tray icon is hidden by default on
+        // Windows 11, so a silent launch looks like nothing happened), so surface
+        // it rather than letting a rival scheduler write the same log file.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            window::open_window_default(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![]),
+            Some(vec![AUTOSTART_FLAG]),
         ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -75,8 +91,13 @@ pub fn run() {
             watcher::spawn(handle.clone());
             scheduler::spawn(handle.clone());
 
+            // Three ways in, three behaviours. Getting this wrong in either
+            // direction is bad: popping the window at login defeats the point of
+            // the app, and staying silent on a manual launch looks broken.
             if first_run {
                 window::show_onboarding(&handle);
+            } else if !launched_by_autostart() {
+                window::open_window_default(&handle);
             }
 
             Ok(())
