@@ -88,6 +88,24 @@ pub fn show_onboarding(app: &AppHandle) {
     }
 }
 
+/// Brings an already-open window forward instead of rebuilding it.
+///
+/// Every other entry point goes through show_window, which destroys first — that
+/// is deliberate for a *new* pop, but wrong when the window is already up and
+/// being typed into: the autosave debounce is 500ms and a Rust-side destroy()
+/// gives the page no chance to flush, so a rebuild can eat the last keystrokes.
+/// Used by the relaunch and global-shortcut paths, where the user is asking to
+/// get to the window rather than for a particular view.
+pub fn focus_or_open(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        return;
+    }
+    open_window_default(app);
+}
+
 pub fn destroy_window(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.destroy();

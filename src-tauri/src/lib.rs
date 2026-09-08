@@ -41,7 +41,7 @@ pub fn run() {
         // Windows 11, so a silent launch looks like nothing happened), so surface
         // it rather than letting a rival scheduler write the same log file.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            window::open_window_default(app);
+            window::focus_or_open(app);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -53,7 +53,7 @@ pub fn run() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state == ShortcutState::Pressed {
-                        window::open_window_default(app);
+                        window::focus_or_open(app);
                     }
                 })
                 .build(),
