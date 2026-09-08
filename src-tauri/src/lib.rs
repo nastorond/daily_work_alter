@@ -107,9 +107,17 @@ pub fn run() {
         .run(|_app_handle, event| {
             // This is a tray-resident app: the main window is destroyed after every
             // pop (see window.rs), so "zero windows open" is the normal 23.5h/day
-            // state, not a reason to quit. Only the tray's "종료" (app.exit) should.
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
+            // state, not a reason to quit.
+            //
+            // `code` tells the two cases apart. Closing the last window raises
+            // ExitRequested with `None` — that one gets blocked. The tray's "종료"
+            // calls app.exit(0), which arrives as `Some(0)` and must be let
+            // through, or the menu item does nothing and the only way out is
+            // Task Manager.
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
             }
         });
 }
