@@ -1,6 +1,8 @@
-use crate::config::Config;
-use crate::storage::{self, DayLog, LogEntry};
-use crate::{scheduler, shortcut, storage as storage_mod, window, AppData};
+use crate::data::config::Config;
+use crate::data::storage::{self, DayLog, LogEntry};
+use crate::data::storage as storage_mod;
+use crate::shell::{shortcut, window};
+use crate::{scheduler, AppData};
 use chrono::{Duration, Local};
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
@@ -12,10 +14,10 @@ pub fn get_config(state: State<AppData>) -> Config {
 
 #[tauri::command]
 pub fn save_config(app: AppHandle, state: State<AppData>, config: Config) -> Result<(), String> {
-    crate::config::save(&config).map_err(|e| e.to_string())?;
+    crate::data::config::save(&config).map_err(|e| e.to_string())?;
 
     shortcut::reregister(&app, &config.hotkey)?;
-    crate::autostart::apply(&app, config.autostart);
+    crate::shell::autostart::apply(&app, config.autostart);
 
     *state.config.lock().unwrap() = config;
     Ok(())
@@ -23,7 +25,7 @@ pub fn save_config(app: AppHandle, state: State<AppData>, config: Config) -> Res
 
 #[tauri::command]
 pub fn open_config_file(app: AppHandle) -> Result<(), String> {
-    let path = crate::config::config_path();
+    let path = crate::data::config::config_path();
     app.opener()
         .open_path(path.to_string_lossy().to_string(), None::<String>)
         .map_err(|e| e.to_string())
@@ -78,7 +80,7 @@ pub fn snooze(app: AppHandle, state: State<AppData>) {
         // clear it or the reminder would never come back — the snooze_until check
         // above is what gates the retry from here on.
         st.last_notified_date = None;
-        let _ = crate::state::save(&st);
+        let _ = crate::data::state::save(&st);
     }
     window::destroy_window(&app);
 }
@@ -91,8 +93,8 @@ pub fn skip_today(app: AppHandle, state: State<AppData>) {
         if !st.skipped_dates.contains(&today) {
             st.skipped_dates.push(today);
         }
-        crate::state::cleanup_skipped(&mut st);
-        let _ = crate::state::save(&st);
+        crate::data::state::cleanup_skipped(&mut st);
+        let _ = crate::data::state::save(&st);
     }
     window::destroy_window(&app);
 }

@@ -1,4 +1,4 @@
-use crate::config::{self, ReloadResult};
+use crate::data::config::{self, ReloadResult};
 use crate::AppData;
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use std::time::Duration;
@@ -43,11 +43,11 @@ fn reload(app: &AppHandle) {
         ReloadResult::Applied(new_cfg) => {
             let data = app.state::<AppData>();
             *data.config.lock().unwrap() = new_cfg.clone();
-            let _ = crate::shortcut::reregister(app, &new_cfg.hotkey);
-            crate::autostart::apply(app, new_cfg.autostart);
+            let _ = crate::shell::shortcut::reregister(app, &new_cfg.hotkey);
+            crate::shell::autostart::apply(app, new_cfg.autostart);
         }
         ReloadResult::ParseError => {
-            crate::notify::notify_config_error(app);
+            crate::shell::notify::notify_config_error(app);
         }
         ReloadResult::Unchanged => {}
     }

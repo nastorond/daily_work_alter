@@ -1,4 +1,4 @@
-use crate::config::app_data_dir;
+use crate::data::config::app_data_dir;
 use chrono::{Duration, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -26,7 +26,7 @@ pub fn load() -> AppState {
 }
 
 pub fn save(state: &AppState) -> std::io::Result<()> {
-    let _ = crate::config::ensure_dirs();
+    let _ = crate::data::config::ensure_dirs();
     let json = serde_json::to_string_pretty(state)?;
     fs::write(state_path(), json)
 }

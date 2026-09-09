@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::data::config::Config;
 use chrono::{Datelike, Duration, Local, NaiveDate, Weekday};
 use serde::Serialize;
 use std::fs;
@@ -7,7 +7,7 @@ use std::path::PathBuf;
 pub fn log_dir(cfg: &Config) -> PathBuf {
     match &cfg.log_dir {
         Some(p) if !p.trim().is_empty() => PathBuf::from(p),
-        _ => crate::config::app_data_dir().join("logs"),
+        _ => crate::data::config::app_data_dir().join("logs"),
     }
 }
 

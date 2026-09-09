@@ -5,8 +5,8 @@
 //! state, replay onboarding. The submenu is only attached in debug builds
 //! (see tray.rs), so the shipped exe has no menu path that can wipe logs.
 
-use crate::config::Config;
-use crate::storage;
+use crate::data::config::Config;
+use crate::data::storage;
 use crate::AppData;
 use chrono::{Datelike, Duration, Local, NaiveDate};
 use tauri::{AppHandle, Manager};
@@ -99,6 +99,6 @@ pub fn clear_week(app: &AppHandle) -> usize {
 pub fn reset_state(app: &AppHandle) {
     let data = app.state::<AppData>();
     let mut st = data.state.lock().unwrap();
-    *st = crate::state::AppState::default();
-    let _ = crate::state::save(&st);
+    *st = crate::data::state::AppState::default();
+    let _ = crate::data::state::save(&st);
 }

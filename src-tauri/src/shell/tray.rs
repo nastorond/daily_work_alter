@@ -1,5 +1,5 @@
 use crate::scheduler::ViewMode;
-use crate::window;
+use crate::shell::window;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
@@ -70,11 +70,11 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             "write_now" => window::show_window(app, ViewMode::Daily, false),
             "view_week" => window::show_window(app, ViewMode::Weekly, false),
             "settings" => window::show_settings(app),
-            "open_config" => open_path(app, crate::config::config_path()),
+            "open_config" => open_path(app, crate::data::config::config_path()),
             "open_log_dir" => {
                 let data = app.state::<crate::AppData>();
                 let cfg = data.config.lock().unwrap().clone();
-                let dir = crate::storage::log_dir(&cfg);
+                let dir = crate::data::storage::log_dir(&cfg);
                 let _ = std::fs::create_dir_all(&dir);
                 open_path(app, dir);
             }

@@ -1,18 +1,13 @@
-mod autostart;
 mod commands;
-mod config;
+mod data;
 mod devtools;
-mod notify;
 mod scheduler;
-mod shortcut;
-mod state;
-mod storage;
-mod tray;
-mod watcher;
-mod window;
+mod shell;
 
-use config::Config;
-use state::AppState;
+use data::config::{self, Config};
+use data::state::{self, AppState};
+use data::watcher;
+use shell::{autostart, shortcut, tray, window};
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;

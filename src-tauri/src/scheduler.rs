@@ -1,5 +1,5 @@
-use crate::state::AppState;
-use crate::storage;
+use crate::data::state::AppState;
+use crate::data::storage;
 use crate::AppData;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime};
 use serde::Serialize;
@@ -19,16 +19,16 @@ fn parse_time_today(hhmm: &str, today: DateTime<Local>) -> Option<DateTime<Local
 
 /// The single work-day iso-weekday (1=Mon..7=Sun) with the highest value in
 /// `work.workdays` — used as "the last workday of the week" for `lastWorkday` mode.
-fn last_workday_iso(cfg: &crate::config::Config) -> Option<u8> {
+fn last_workday_iso(cfg: &crate::data::config::Config) -> Option<u8> {
     cfg.work.workdays.iter().copied().max()
 }
 
-pub fn is_last_workday(cfg: &crate::config::Config, now: DateTime<Local>) -> bool {
+pub fn is_last_workday(cfg: &crate::data::config::Config, now: DateTime<Local>) -> bool {
     let iso = now.weekday().number_from_monday() as u8;
     last_workday_iso(cfg) == Some(iso)
 }
 
-pub fn view_mode_for(cfg: &crate::config::Config, now: DateTime<Local>) -> ViewMode {
+pub fn view_mode_for(cfg: &crate::data::config::Config, now: DateTime<Local>) -> ViewMode {
     if !cfg.weekly.enabled {
         return ViewMode::Daily;
     }
@@ -49,7 +49,7 @@ pub fn view_mode_for(cfg: &crate::config::Config, now: DateTime<Local>) -> ViewM
 /// workday -> not skipped -> nothing written yet -> not already notified today
 /// -> not snoozed -> after startTime -> inside the notify window
 /// [endTime - minutesBefore, endTime + catchUpHours].
-pub fn should_notify(cfg: &crate::config::Config, state: &AppState, now: DateTime<Local>) -> bool {
+pub fn should_notify(cfg: &crate::data::config::Config, state: &AppState, now: DateTime<Local>) -> bool {
     let today = now.format("%Y-%m-%d").to_string();
     let iso_weekday = now.weekday().number_from_monday() as u8;
 
@@ -102,19 +102,19 @@ pub fn tick(app: &AppHandle) {
     let mut state = data.state.lock().unwrap();
 
     state.last_tick_at = Some(now.to_rfc3339());
-    crate::state::cleanup_skipped(&mut state);
+    crate::data::state::cleanup_skipped(&mut state);
 
     let should = should_notify(&cfg, &state, now);
     if should {
         state.last_notified_date = Some(now.format("%Y-%m-%d").to_string());
     }
-    let _ = crate::state::save(&state);
+    let _ = crate::data::state::save(&state);
     drop(state);
 
     if should {
         let mode = view_mode_for(&cfg, now);
-        crate::window::show_window(app, mode, false);
-        crate::notify::notify_time_to_write(app, mode);
+        crate::shell::window::show_window(app, mode, false);
+        crate::shell::notify::notify_time_to_write(app, mode);
     }
 }
 
@@ -124,7 +124,7 @@ pub fn force_show(app: &AppHandle) {
     let data = app.state::<AppData>();
     let cfg = data.config.lock().unwrap().clone();
     let mode = view_mode_for(&cfg, Local::now());
-    crate::window::show_window(app, mode, false);
+    crate::shell::window::show_window(app, mode, false);
 }
 
 pub fn spawn(app: AppHandle) {
