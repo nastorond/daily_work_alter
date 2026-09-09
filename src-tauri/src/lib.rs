@@ -20,6 +20,11 @@ use tauri_plugin_global_shortcut::ShortcutState;
 pub struct AppData {
     pub config: Mutex<Config>,
     pub state: Mutex<AppState>,
+    /// Which view the live window is showing, if any. Kept here rather than read
+    /// back from the webview's URL: right after creation that URL is still
+    /// "about:blank", so deriving it would make the behaviour depend on timing.
+    /// Only window.rs writes this, alongside the create/destroy it describes.
+    pub current_view: Mutex<Option<scheduler::ViewMode>>,
 }
 
 /// Passed on the command line by the autostart registry entry, so a login launch
@@ -79,6 +84,7 @@ pub fn run() {
             app.manage(AppData {
                 config: Mutex::new(cfg.clone()),
                 state: Mutex::new(app_state),
+                current_view: Mutex::new(None),
             });
 
             tray::build(&handle)?;

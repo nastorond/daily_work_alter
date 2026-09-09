@@ -13,100 +13,148 @@ fn route_for(mode: ViewMode) -> &'static str {
     }
 }
 
-/// Destroys any existing main window and creates a fresh one. We destroy rather
-/// than hide/reuse so the WebView2 process is actually torn down between pops.
-/// That is what keeps idle RAM around 20MB: for the ~23.5h/day this app spends
-/// doing nothing, only the Rust process is resident. It is also why the schedule
-/// timer lives in Rust — with no window there is no JS to run it.
+fn build_window(app: &AppHandle, url: String) -> tauri::Result<tauri::WebviewWindow> {
+    WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App(url.into()))
+        .title("DailyWorkAlter")
+        .inner_size(WIN_WIDTH, WIN_HEIGHT)
+        .resizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .build()
+}
+
+fn present(win: &tauri::WebviewWindow) {
+    position_bottom_right(win);
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
+fn bring_forward(win: &tauri::WebviewWindow) {
+    let _ = win.unminimize();
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
+/// Opens the given view, rebuilding the window unless it is already showing
+/// exactly that view.
+///
+/// Rebuilding is the normal path and is deliberate: the window is destroyed
+/// rather than hidden when it closes, so the WebView2 process is actually torn
+/// down. That is what keeps idle RAM around 20MB for the ~23.5h/day this app
+/// spends doing nothing, and it is also why the schedule timer lives in Rust —
+/// with no window there is no JS to run it.
+///
+/// But rebuilding a window that is already up and being typed into loses work:
+/// autosave runs on a 500ms debounce and a Rust-side destroy() gives the page no
+/// chance to flush. So an identical view is reused instead. Opening settings
+/// always rebuilds, because the modal is driven by the query string rather than
+/// by a message to the live page.
+///
+/// Concurrency: the lock is used to *claim* the view, and released before any
+/// windowing call. Claiming before building is what stops the startup race —
+/// the scheduler's first tick and the manual-launch path can arrive here at the
+/// same moment, and a concurrent caller asking for the same view now sees the
+/// claim and backs off instead of building a rival window that destroys the
+/// first. The lock is deliberately not held across window creation: build() from
+/// a background thread dispatches to the main thread, which would deadlock if
+/// the main thread were itself waiting on this lock.
 pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) {
-    destroy_window(app);
+    let Some(data) = app.try_state::<AppData>() else {
+        return;
+    };
+
+    let already_claimed = {
+        let mut current = data.current_view.lock().unwrap();
+        if !open_settings && *current == Some(mode) {
+            true
+        } else {
+            *current = Some(mode);
+            false
+        }
+    };
+
+    if already_claimed {
+        if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+            bring_forward(&win);
+        }
+        // No window yet means another caller is mid-build; it will present it.
+        return;
+    }
+
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = win.destroy();
+    }
 
     let mut url = format!("index.html?view={}", route_for(mode));
     if open_settings {
         url.push_str("&settings=1");
     }
 
-    let win = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App(url.into()))
-        .title("DailyWorkAlter")
-        .inner_size(WIN_WIDTH, WIN_HEIGHT)
-        .resizable(false)
-        .decorations(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(false)
-        .build();
-
-    match win {
-        Ok(win) => {
-            position_bottom_right(&win);
-            let _ = win.show();
-            let _ = win.set_focus();
-        }
+    match build_window(app, url) {
+        Ok(win) => present(&win),
         Err(e) => {
             eprintln!("failed to create window: {e}");
+            *data.current_view.lock().unwrap() = None;
         }
     }
 }
 
-/// Used by the tray "지금 작성하기" / global shortcut — opens whatever view
-/// would currently be shown (daily vs weekly) without touching notify state.
+/// Used by the tray "지금 작성하기" — opens whatever view is due right now
+/// (daily vs weekly) without touching notify state.
 pub fn open_window_default(app: &AppHandle) {
-    let data = app.state::<AppData>();
-    let cfg = data.config.lock().unwrap().clone();
-    let mode = crate::scheduler::view_mode_for(&cfg, chrono::Local::now());
+    let mode = due_mode(app);
     show_window(app, mode, false);
 }
 
 pub fn show_settings(app: &AppHandle) {
+    let mode = due_mode(app);
+    show_window(app, mode, true);
+}
+
+fn due_mode(app: &AppHandle) -> ViewMode {
     let data = app.state::<AppData>();
     let cfg = data.config.lock().unwrap().clone();
-    let mode = crate::scheduler::view_mode_for(&cfg, chrono::Local::now());
-    show_window(app, mode, true);
+    crate::scheduler::view_mode_for(&cfg, chrono::Local::now())
 }
 
 /// First-run only: a trimmed-down settings form asking just for work hours and
 /// the weekly-summary day. Also reachable from the debug-only tray test menu.
 pub fn show_onboarding(app: &AppHandle) {
-    destroy_window(app);
-    let win = WebviewWindowBuilder::new(app, MAIN_LABEL, WebviewUrl::App("index.html?view=onboarding".into()))
-        .title("DailyWorkAlter")
-        .inner_size(WIN_WIDTH, WIN_HEIGHT)
-        .resizable(false)
-        .decorations(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .visible(false)
-        .build();
+    // Onboarding is neither daily nor weekly, so leaving the claim as None means
+    // a later request for a real view rebuilds rather than reusing this window.
+    if let Some(data) = app.try_state::<AppData>() {
+        *data.current_view.lock().unwrap() = None;
+    }
 
-    match win {
-        Ok(win) => {
-            position_bottom_right(&win);
-            let _ = win.show();
-            let _ = win.set_focus();
-        }
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = win.destroy();
+    }
+
+    match build_window(app, "index.html?view=onboarding".to_string()) {
+        Ok(win) => present(&win),
         Err(e) => eprintln!("failed to create onboarding window: {e}"),
     }
 }
 
-/// Brings an already-open window forward instead of rebuilding it.
+/// Brings an already-open window forward, opening the due view if there is none.
 ///
-/// Every other entry point goes through show_window, which destroys first — that
-/// is deliberate for a *new* pop, but wrong when the window is already up and
-/// being typed into: the autosave debounce is 500ms and a Rust-side destroy()
-/// gives the page no chance to flush, so a rebuild can eat the last keystrokes.
 /// Used by the relaunch and global-shortcut paths, where the user is asking to
-/// get to the window rather than for a particular view.
+/// get to the window rather than for a particular view — so whatever is already
+/// up is what they want, even if it is not the view that is due now.
 pub fn focus_or_open(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        let _ = win.unminimize();
-        let _ = win.show();
-        let _ = win.set_focus();
+        bring_forward(&win);
         return;
     }
     open_window_default(app);
 }
 
 pub fn destroy_window(app: &AppHandle) {
+    if let Some(data) = app.try_state::<AppData>() {
+        *data.current_view.lock().unwrap() = None;
+    }
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.destroy();
     }
