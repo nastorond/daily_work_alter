@@ -21,14 +21,10 @@ export async function renderOnboarding(root) {
     <div class="body">
       <p class="onboarding-intro">
         퇴근 30분 전에 자동으로 떠서 오늘 한 일을 기록하는 앱이에요.<br />
-        출근/퇴근 시간과 주간 요약 요일만 먼저 정해주세요. 나머지는 트레이 메뉴의
+        퇴근 시간과 주간 요약 요일만 먼저 정해주세요. 나머지는 트레이 메뉴의
         "설정"에서 언제든 바꿀 수 있어요.
       </p>
       <div class="error-banner" id="ob-error" hidden></div>
-      <div class="form-row">
-        <label>출근 시간</label>
-        ${timeFieldHtml("ob-start-time")}
-      </div>
       <div class="form-row">
         <label>퇴근 시간</label>
         ${timeFieldHtml("ob-end-time")}
@@ -46,26 +42,21 @@ export async function renderOnboarding(root) {
   `;
 
   const q = (sel) => root.querySelector(sel);
-  setTime(root, "ob-start-time", config.work.startTime);
   setTime(root, "ob-end-time", config.work.endTime);
-  attachTimeField(root, "ob-start-time");
   attachTimeField(root, "ob-end-time");
   q("#ob-weekly-day").value = String(config.weekly.day);
 
   q("#ob-start").addEventListener("click", async () => {
-    const startTime = getTime(root, "ob-start-time");
     const endTime = getTime(root, "ob-end-time");
-    if (!startTime || !endTime || startTime >= endTime) {
+    if (!endTime) {
       const banner = q("#ob-error");
-      banner.textContent = !startTime || !endTime
-        ? "시간을 시 0~23, 분 0~59 범위로 입력하세요."
-        : "출근 시간은 퇴근 시간보다 빨라야 합니다.";
+      banner.textContent = "퇴근 시간을 시 0~23, 분 0~59 범위로 입력하세요.";
       banner.hidden = false;
       return;
     }
     const updated = {
       ...config,
-      work: { ...config.work, startTime, endTime },
+      work: { ...config.work, endTime },
       weekly: { ...config.weekly, day: Number(q("#ob-weekly-day").value) },
     };
     await api.saveConfig(updated);

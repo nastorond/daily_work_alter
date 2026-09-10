@@ -25,10 +25,6 @@ export async function renderSettings(container, { onClose } = {}) {
       <div class="error-banner" id="settings-error" hidden></div>
 
       <div class="form-row">
-        <label>출근 시간</label>
-        ${timeFieldHtml("f-start-time")}
-      </div>
-      <div class="form-row">
         <label>퇴근 시간</label>
         ${timeFieldHtml("f-end-time")}
       </div>
@@ -91,9 +87,7 @@ export async function renderSettings(container, { onClose } = {}) {
   container.appendChild(modal);
 
   const q = (sel) => modal.querySelector(sel);
-  setTime(modal, "f-start-time", config.work.startTime);
   setTime(modal, "f-end-time", config.work.endTime);
-  attachTimeField(modal, "f-start-time");
   attachTimeField(modal, "f-end-time");
   q("#f-minutes-before").value = config.notify.minutesBefore;
   q("#f-snooze").value = config.notify.snoozeMinutes;
@@ -139,19 +133,14 @@ export async function renderSettings(container, { onClose } = {}) {
 
   q("#f-save").addEventListener("click", async () => {
     const workdays = [...modal.querySelectorAll('#f-workdays input:checked')].map((cb) => Number(cb.value));
-    const startTime = getTime(modal, "f-start-time");
     const endTime = getTime(modal, "f-end-time");
 
     if (workdays.length === 0) {
       showError("근무 요일을 최소 1개 선택하세요.");
       return;
     }
-    if (!startTime || !endTime) {
-      showError("시간을 시 0~23, 분 0~59 범위로 입력하세요.");
-      return;
-    }
-    if (startTime >= endTime) {
-      showError("출근 시간은 퇴근 시간보다 빨라야 합니다.");
+    if (!endTime) {
+      showError("퇴근 시간을 시 0~23, 분 0~59 범위로 입력하세요.");
       return;
     }
     if (!hotkeyInput.value.trim()) {
@@ -161,7 +150,7 @@ export async function renderSettings(container, { onClose } = {}) {
 
     const updated = {
       ...config,
-      work: { ...config.work, startTime, endTime, workdays },
+      work: { ...config.work, endTime, workdays },
       notify: {
         ...config.notify,
         minutesBefore: Number(q("#f-minutes-before").value) || 0,

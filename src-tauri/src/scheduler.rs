@@ -53,7 +53,7 @@ pub fn view_mode_for(cfg: &crate::data::config::Config, now: DateTime<Local>) ->
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     Due,
-    BeforeWorkStart,
+    Onboarding,
     /// Today was missed entirely; show it late, once.
     DueCatchUp,
     NotWorkday,
@@ -70,7 +70,7 @@ impl Decision {
     fn label(self) -> &'static str {
         match self {
             Decision::Due => "띄울 차례",
-            Decision::BeforeWorkStart => "출근 시간 전",
+            Decision::Onboarding => "최초 설정 중",
             Decision::DueCatchUp => "놓친 날 보충",
             Decision::NotWorkday => "근무 요일이 아님",
             Decision::Skipped => "오늘 건너뛰기 상태",
@@ -87,6 +87,11 @@ impl Decision {
 /// Judgement order, short-circuiting on the first rule that declines:
 /// workday -> not skipped -> not snoozed -> repeat interval elapsed ->
 /// inside the notify window [endTime - minutesBefore, endTime].
+///
+/// There is no start-of-day guard: the window is the half hour before endTime,
+/// so a start time could only matter if it fell inside that half hour, which no
+/// real shift does. Keeping the setting just to have something to check would be
+/// the tail wagging the dog.
 ///
 /// Two deliberate choices here:
 ///
@@ -146,16 +151,6 @@ pub fn notify_decision(
         }
     }
 
-    // Rarely fires now that the window is the half hour before endTime, but it
-    // keeps startTime from being a setting that does nothing: a config where
-    // startTime lands inside that half hour (a short shift, say) is still
-    // honoured rather than silently ignored.
-    if let Some(start) = parse_time_today(&cfg.work.start_time, now) {
-        if now < start {
-            return Decision::BeforeWorkStart;
-        }
-    }
-
     let Some(end) = parse_time_today(&cfg.work.end_time, now) else {
         return Decision::BadEndTime;
     };
@@ -192,11 +187,12 @@ fn should_notify(
     notify_decision(cfg, state, now) == Decision::Due
 }
 
+static LAST_DECISION: std::sync::Mutex<Option<Decision>> = std::sync::Mutex::new(None);
+
 /// Logs a declined decision only when it differs from the previous tick, so a
 /// whole quiet day is a handful of lines instead of 1440.
 fn log_if_changed(decision: Decision) {
-    static LAST: std::sync::Mutex<Option<Decision>> = std::sync::Mutex::new(None);
-    let mut last = LAST.lock().unwrap();
+    let mut last = LAST_DECISION.lock().unwrap();
     if *last == Some(decision) {
         return;
     }
@@ -204,10 +200,24 @@ fn log_if_changed(decision: Decision) {
     crate::data::log::line(&format!("대기: {}", decision.label()));
 }
 
+/// Records a decision without writing a line — used after a successful pop,
+/// which logs its own message, so the next decline is still recognised as a
+/// change without "대기: 띄울 차례" appearing in the file.
+fn mark_decision(decision: Decision) {
+    *LAST_DECISION.lock().unwrap() = Some(decision);
+}
+
 /// Called every 60s from the scheduler thread, plus once at startup and on
 /// manual "지금 알림 테스트". Not re-entrant-safe across threads by design —
 /// only the single scheduler thread and tray "test" action call this.
 pub fn tick(app: &AppHandle) {
+    // Never interrupt first-run onboarding: someone who hasn't set a 퇴근 시간
+    // yet has nothing useful to be reminded about.
+    if crate::shell::window::is_onboarding(app) {
+        log_if_changed(Decision::Onboarding);
+        return;
+    }
+
     let data = app.state::<AppData>();
     let now = Local::now();
 
@@ -275,7 +285,7 @@ pub fn tick(app: &AppHandle) {
     crate::shell::notify::notify_time_to_write(app, mode);
     let tag = if decision == Decision::DueCatchUp { " 놓친 날 보충" } else { "" };
     crate::data::log::line(&format!("띄움: {mode:?} ({today}){tag}"));
-    log_if_changed(Decision::Due);
+    mark_decision(decision);
 }
 
 /// Tray "지금 알림 테스트" — bypasses all should_notify gating and just shows
@@ -315,7 +325,6 @@ mod tests {
     /// So the notify window is [16:30, 21:00].
     fn cfg(tag: &str) -> Config {
         let mut c = Config::default();
-        c.work.start_time = "08:00".into();
         c.work.end_time = "17:00".into();
         c.work.workdays = vec![1, 2, 3, 4, 5];
         c.notify.minutes_before = 30;
@@ -449,7 +458,7 @@ mod tests {
         );
         assert_eq!(
             notify_decision(&c, &fresh_state(), at(7, 0)),
-            Decision::BeforeWorkStart
+            Decision::OutsideWindow
         );
 
         let mut weekend = cfg("reasons_weekend");

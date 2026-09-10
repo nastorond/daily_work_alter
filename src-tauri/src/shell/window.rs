@@ -21,6 +21,11 @@ pub enum WindowState {
     Closed,
     Building(ViewMode),
     Showing(ViewMode),
+    /// First-run onboarding is up, or about to be. Claimed before the scheduler
+    /// thread starts so its first tick can't race in and replace the onboarding
+    /// form with the daily box — which would ask someone to write their log
+    /// before they had set a single option.
+    Onboarding,
 }
 
 fn route_for(mode: ViewMode) -> &'static str {
@@ -177,19 +182,20 @@ fn due_mode(app: &AppHandle) -> ViewMode {
 /// First-run only: a trimmed-down settings form asking just for work hours and
 /// the weekly-summary day. Also reachable from the debug-only tray test menu.
 pub fn show_onboarding(app: &AppHandle) {
-    // Onboarding is neither daily nor weekly, so leaving the state Closed means
-    // a later request for a real view rebuilds rather than reusing this window.
-    if let Some(data) = app.try_state::<AppData>() {
-        *data.window_state.lock().unwrap() = WindowState::Closed;
-    }
+    claim_onboarding(app);
 
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.destroy();
     }
 
     match build_window(app, "index.html?view=onboarding".to_string()) {
-        Ok(win) => present(&win),
-        Err(e) => log::line(&format!("onboarding window build failed: {e}")),
+        Ok(win) => {
+            if let Some(data) = app.try_state::<AppData>() {
+                *data.window_opened_at.lock().unwrap() = Some(chrono::Local::now());
+            }
+            present(&win);
+        }
+        Err(e) => log::line(&format!("온보딩 창 생성 실패: {e}")),
     }
 }
 
@@ -204,6 +210,20 @@ pub fn focus_or_open(app: &AppHandle) {
         return;
     }
     open_window_default(app);
+}
+
+/// Marks onboarding as owning the window. Called both by `show_onboarding` and
+/// by startup before the scheduler thread exists, so there is no gap to race in.
+pub fn claim_onboarding(app: &AppHandle) {
+    if let Some(data) = app.try_state::<AppData>() {
+        *data.window_state.lock().unwrap() = WindowState::Onboarding;
+    }
+}
+
+/// Whether onboarding currently owns the window.
+pub fn is_onboarding(app: &AppHandle) -> bool {
+    app.try_state::<AppData>()
+        .is_some_and(|d| *d.window_state.lock().unwrap() == WindowState::Onboarding)
 }
 
 /// Whether the main window currently exists.

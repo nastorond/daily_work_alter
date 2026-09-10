@@ -54,6 +54,7 @@ Windows 11은 새 트레이 아이콘을 숨기므로 시계 왼쪽 `^`에서 �
 (직접 고치면 재시작 없이 반영되고, 문법을 깨뜨리면 이전 설정을 유지한 채 알림만 뜬다).
 비자명한 값만:
 
+- `work.endTime` — 퇴근 시각 `HH:MM`. 알림은 이보다 `notify.minutesBefore`분 전에 시작
 - `work.workdays` — **1=월 … 7=일**
 - `weekly.mode` — `fixedDay`(지정 요일) 또는 `lastWorkday`(그 주 마지막 근무일)
 - `notify.repeatMinutes` — 닫아도 다시 띄우는 간격. `0`이면 하루 한 번만

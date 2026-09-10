@@ -2,9 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-fn default_start_time() -> String {
-    "09:00".into()
-}
 fn default_end_time() -> String {
     "18:00".into()
 }
@@ -15,8 +12,6 @@ fn default_workdays() -> Vec<u8> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkConfig {
-    #[serde(default = "default_start_time")]
-    pub start_time: String,
     #[serde(default = "default_end_time")]
     pub end_time: String,
     #[serde(default = "default_workdays")]
@@ -26,7 +21,6 @@ pub struct WorkConfig {
 impl Default for WorkConfig {
     fn default() -> Self {
         Self {
-            start_time: default_start_time(),
             end_time: default_end_time(),
             workdays: default_workdays(),
         }

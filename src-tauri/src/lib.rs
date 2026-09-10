@@ -95,6 +95,13 @@ pub fn run() {
             }
             autostart::apply(&handle, cfg.autostart);
 
+            // Claim the window for onboarding before the scheduler thread
+            // exists, so its first tick cannot replace the form with the daily
+            // box before a single option has been set.
+            if first_run {
+                window::claim_onboarding(&handle);
+            }
+
             watcher::spawn(handle.clone());
             scheduler::spawn(handle.clone());
 
