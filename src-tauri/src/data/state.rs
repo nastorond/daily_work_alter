@@ -11,6 +11,12 @@ pub struct AppState {
     /// date because the reminder now repeats until something is written; the
     /// date alone could only express "once a day".
     pub last_notified_at: Option<String>,
+    /// The date the reminder was shown on at least once (YYYY-MM-DD). Comparing
+    /// this against today is what recovers a day missed entirely — asleep,
+    /// locked, or the app not running through the whole notify window. A
+    /// time-based grace can't do that: it can only ask "how long since endTime",
+    /// which says nothing about whether the day was ever handled.
+    pub last_shown_date: Option<String>,
     pub snooze_until: Option<String>,
     #[serde(default)]
     pub skipped_dates: Vec<String>,

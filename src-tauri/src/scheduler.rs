@@ -1,5 +1,5 @@
 use crate::data::state::AppState;
-use crate::data::storage;
+use crate::shell::window::ShowResult;
 use crate::AppData;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime};
 use serde::Serialize;
@@ -53,14 +53,16 @@ pub fn view_mode_for(cfg: &crate::data::config::Config, now: DateTime<Local>) ->
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     Due,
+    BeforeWorkStart,
+    /// Today was missed entirely; show it late, once.
+    DueCatchUp,
     NotWorkday,
     Skipped,
-    AlreadyWritten,
     RecentlyNotified,
     WindowAlreadyOpen,
     Snoozed,
-    BeforeWorkStart,
     OutsideWindow,
+    AfterEndTime,
     BadEndTime,
 }
 
@@ -68,29 +70,40 @@ impl Decision {
     fn label(self) -> &'static str {
         match self {
             Decision::Due => "띄울 차례",
+            Decision::BeforeWorkStart => "출근 시간 전",
+            Decision::DueCatchUp => "놓친 날 보충",
             Decision::NotWorkday => "근무 요일이 아님",
             Decision::Skipped => "오늘 건너뛰기 상태",
-            Decision::AlreadyWritten => "오늘 기록에 이미 내용이 있음",
             Decision::RecentlyNotified => "방금 띄웠음 (다시 알림 대기 중)",
             Decision::WindowAlreadyOpen => "창이 이미 열려 있음",
             Decision::Snoozed => "스누즈 중",
-            Decision::BeforeWorkStart => "출근 시간 전",
             Decision::OutsideWindow => "알림 시간대가 아님",
+            Decision::AfterEndTime => "퇴근 시간이 지났고 오늘은 이미 띄웠음",
             Decision::BadEndTime => "퇴근 시간 형식을 읽을 수 없음",
         }
     }
 }
 
 /// Judgement order, short-circuiting on the first rule that declines:
-/// workday -> not skipped -> nothing written yet -> not snoozed -> repeat
-/// interval elapsed -> after startTime -> inside the notify window
-/// [endTime - minutesBefore, endTime + catchUpHours].
+/// workday -> not skipped -> not snoozed -> repeat interval elapsed ->
+/// inside the notify window [endTime - minutesBefore, endTime].
 ///
-/// The reminder repeats rather than firing once a day: closing the box without
-/// writing anything used to mean the day was silently over, so one missed pop
-/// lost the whole day. `notify.repeatMinutes` sets the gap (0 restores
-/// once-a-day). Writing content, skipping the day, or snoozing all still stop
-/// it — those are the explicit ways to say "not now".
+/// Two deliberate choices here:
+///
+/// Whether anything is already written does not matter. It used to stop the
+/// reminder, but "I jotted one line at lunch" is not a reason to skip the
+/// end-of-day pass, and it made an accidental early save silently cancel the day.
+///
+/// endTime is a hard deadline. There is no catch-up grace past it: the window is
+/// for the half hour before leaving, so if the machine was asleep through that
+/// half hour the day is simply missed. The cost is a missed reminder after a long
+/// sleep; the gain is that "past endTime" means one thing everywhere, including
+/// the auto-close in `tick`.
+///
+/// The reminder repeats inside the window rather than firing once: closing the
+/// box without writing used to end the day, so one missed pop lost it entirely.
+/// `notify.repeatMinutes` sets the gap (0 restores once-a-day). Skipping the day
+/// or snoozing are the explicit ways to say "not now".
 /// Whether the repeat gap since the last pop has elapsed. Returns the reason to
 /// keep waiting, or None to carry on with the remaining rules.
 fn repeat_wait(
@@ -123,9 +136,6 @@ pub fn notify_decision(
     if state.skipped_dates.contains(&today) {
         return Decision::Skipped;
     }
-    if storage::log_has_content(cfg, &today) {
-        return Decision::AlreadyWritten;
-    }
     // Snooze is checked before the repeat gap so an explicit "10분 뒤 다시"
     // governs, rather than being overridden by whichever interval is longer.
     if let Some(snooze) = &state.snooze_until {
@@ -135,14 +145,11 @@ pub fn notify_decision(
             }
         }
     }
-    if let Some(wait) = repeat_wait(cfg, state, now) {
-        return wait;
-    }
 
-    // Guard against popping outside working hours: on a machine that woke from
-    // sleep long after the catch-up window, or with an unusually large
-    // catchUpHours, this keeps the reminder from surfacing before the workday
-    // has started.
+    // Rarely fires now that the window is the half hour before endTime, but it
+    // keeps startTime from being a setting that does nothing: a config where
+    // startTime lands inside that half hour (a short shift, say) is still
+    // honoured rather than silently ignored.
     if let Some(start) = parse_time_today(&cfg.work.start_time, now) {
         if now < start {
             return Decision::BeforeWorkStart;
@@ -153,11 +160,25 @@ pub fn notify_decision(
         return Decision::BadEndTime;
     };
     let window_start = end - Duration::minutes(cfg.notify.minutes_before as i64);
-    let window_end = end + Duration::hours(cfg.notify.catch_up_hours as i64);
-    if now >= window_start && now <= window_end {
-        Decision::Due
+
+    if now < window_start {
+        return Decision::OutsideWindow;
+    }
+
+    if now <= end {
+        return match repeat_wait(cfg, state, now) {
+            Some(wait) => wait,
+            None => Decision::Due,
+        };
+    }
+
+    // Past endTime. Normally done for the day — but if the reminder never got
+    // shown today at all (machine asleep or locked through the whole window,
+    // app not running), the stored date says so and it gets one late showing.
+    if state.last_shown_date.as_deref() == Some(today.as_str()) {
+        Decision::AfterEndTime
     } else {
-        Decision::OutsideWindow
+        Decision::DueCatchUp
     }
 }
 
@@ -200,7 +221,21 @@ pub fn tick(app: &AppHandle) {
     let _ = crate::data::state::save(&state);
     drop(state);
 
-    if decision != Decision::Due {
+    // A box that sat open across endTime is stale — whoever it was for has gone
+    // home. Close it so it isn't on the desktop tomorrow morning. Only windows
+    // opened *before* endTime qualify: a late catch-up window is opened after it
+    // and must survive, or it would be shut on the very next tick. Autosave runs
+    // on a 500ms debounce, so anything typed is already on disk.
+    if let Some(end) = parse_time_today(&cfg.work.end_time, now) {
+        let opened_before_end = crate::shell::window::opened_at(app).is_some_and(|t| t <= end);
+        if now > end && opened_before_end && crate::shell::window::is_open(app) {
+            crate::shell::window::destroy_window(app);
+            crate::data::log::line("퇴근 시간이 지나 열려 있던 창을 닫음");
+            return;
+        }
+    }
+
+    if !matches!(decision, Decision::Due | Decision::DueCatchUp) {
         log_if_changed(decision);
         return;
     }
@@ -218,19 +253,28 @@ pub fn tick(app: &AppHandle) {
     // "never popped all day": the date was stamped, so every later tick
     // short-circuited on "already notified today".
     let mode = view_mode_for(&cfg, now);
-    if !crate::shell::window::show_window(app, mode, false) {
-        crate::data::log::line("notify due but no window appeared; retrying next tick");
-        return;
+    match crate::shell::window::show_window(app, mode, false) {
+        ShowResult::Shown => {}
+        // Someone else is building it right now (a manual launch landing on the
+        // same moment). Not a failure, and not ours to record either — leave the
+        // stamp alone so whoever closes the window sets it.
+        ShowResult::Building => return,
+        ShowResult::Failed => {
+            crate::data::log::line("띄우려 했으나 창 생성 실패, 다음 tick에서 재시도");
+            return;
+        }
     }
 
     let today = now.format("%Y-%m-%d").to_string();
     {
         let mut state = data.state.lock().unwrap();
         state.last_notified_at = Some(now.to_rfc3339());
+        state.last_shown_date = Some(today.clone());
         let _ = crate::data::state::save(&state);
     }
     crate::shell::notify::notify_time_to_write(app, mode);
-    crate::data::log::line(&format!("띄움: {mode:?} ({today})"));
+    let tag = if decision == Decision::DueCatchUp { " 놓친 날 보충" } else { "" };
+    crate::data::log::line(&format!("띄움: {mode:?} ({today}){tag}"));
     log_if_changed(Decision::Due);
 }
 
@@ -275,7 +319,6 @@ mod tests {
         c.work.end_time = "17:00".into();
         c.work.workdays = vec![1, 2, 3, 4, 5];
         c.notify.minutes_before = 30;
-        c.notify.catch_up_hours = 4;
         c.log_dir = Some(temp_dir(tag).to_string_lossy().to_string());
         c
     }
@@ -292,7 +335,7 @@ mod tests {
     fn fires_inside_the_notify_window() {
         let c = cfg("inside");
         assert!(should_notify(&c, &fresh_state(), at(16, 30)));
-        assert!(should_notify(&c, &fresh_state(), at(18, 0)));
+        assert!(should_notify(&c, &fresh_state(), at(17, 0)));
     }
 
     #[test]
@@ -301,29 +344,37 @@ mod tests {
         assert!(!should_notify(&c, &fresh_state(), at(16, 29)));
     }
 
+    /// Past endTime, a day already shown is done.
     #[test]
-    fn silent_after_the_catch_up_window() {
+    fn silent_after_end_time_once_the_day_was_shown() {
         let c = cfg("after");
-        assert!(!should_notify(&c, &fresh_state(), at(21, 1)));
+        let mut st = fresh_state();
+        st.last_shown_date = Some(TODAY.to_string());
+        assert!(!should_notify(&c, &st, at(17, 1)));
+        assert_eq!(notify_decision(&c, &st, at(21, 0)), Decision::AfterEndTime);
     }
 
-    /// The question this file exists to answer: saving real content stops the
-    /// reminder for the rest of the day.
+    /// ...but a day that was never shown at all gets one late showing. This is
+    /// the sleep/lock recovery: the stored date, not a time-based grace.
     #[test]
-    fn saved_content_stops_the_reminder() {
+    fn a_day_never_shown_is_caught_up_after_end_time() {
+        let c = cfg("catchup");
+        let st = fresh_state();
+        assert_eq!(notify_decision(&c, &st, at(21, 0)), Decision::DueCatchUp);
+
+        // Yesterday's showing doesn't count as today's.
+        let mut stale = fresh_state();
+        stale.last_shown_date = Some("2026-09-09".to_string());
+        assert_eq!(notify_decision(&c, &stale, at(21, 0)), Decision::DueCatchUp);
+    }
+
+    /// Written content no longer suppresses the reminder — one line jotted at
+    /// lunch is not a reason to skip the end-of-day pass.
+    #[test]
+    fn already_written_content_does_not_stop_the_reminder() {
         let c = cfg("saved");
         storage::write_log(&c, TODAY, &["한 줄 썼음".to_string()]).unwrap();
         assert!(storage::log_has_content(&c, TODAY));
-        assert!(!should_notify(&c, &fresh_state(), at(16, 30)));
-    }
-
-    /// ...but saving an *empty* box does not. The file gets written with only
-    /// frontmatter, which does not count as content.
-    #[test]
-    fn saving_an_empty_box_does_not_stop_the_reminder() {
-        let c = cfg("empty");
-        storage::write_log(&c, TODAY, &[]).unwrap();
-        assert!(!storage::log_has_content(&c, TODAY));
         assert!(should_notify(&c, &fresh_state(), at(16, 30)));
     }
 
@@ -342,7 +393,7 @@ mod tests {
             Decision::RecentlyNotified
         );
         assert!(should_notify(&c, &st, at(16, 40)));
-        assert!(should_notify(&c, &st, at(17, 30)));
+        assert!(should_notify(&c, &st, at(17, 0)));
     }
 
     /// repeatMinutes = 0 keeps the old once-a-day behaviour.
@@ -352,7 +403,8 @@ mod tests {
         c.notify.repeat_minutes = 0;
         let mut st = fresh_state();
         st.last_notified_at = Some(at(16, 30).to_rfc3339());
-        assert!(!should_notify(&c, &st, at(18, 0)));
+        st.last_shown_date = Some(TODAY.to_string());
+        assert!(!should_notify(&c, &st, at(16, 50)));
 
         // Yesterday's pop does not carry over.
         st.last_notified_at = Some(
@@ -411,7 +463,7 @@ mod tests {
         storage::write_log(&written, TODAY, &["뭔가 씀".to_string()]).unwrap();
         assert_eq!(
             notify_decision(&written, &fresh_state(), at(16, 30)),
-            Decision::AlreadyWritten
+            Decision::Due
         );
     }
 

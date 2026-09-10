@@ -20,6 +20,11 @@ pub struct AppData {
     /// creation that URL is still "about:blank", so deriving it would make the
     /// behaviour depend on timing. Only window.rs writes this.
     pub window_state: Mutex<shell::window::WindowState>,
+    /// When the live window was opened. Used to auto-close a box that sat open
+    /// across endTime, while leaving a late catch-up window (opened after
+    /// endTime) alone — otherwise the auto-close would shut the catch-up box on
+    /// the very next tick.
+    pub window_opened_at: Mutex<Option<chrono::DateTime<chrono::Local>>>,
 }
 
 /// Passed on the command line by the autostart registry entry, so a login launch
@@ -80,6 +85,7 @@ pub fn run() {
                 config: Mutex::new(cfg.clone()),
                 state: Mutex::new(app_state),
                 window_state: Mutex::new(shell::window::WindowState::Closed),
+                window_opened_at: Mutex::new(None),
             });
 
             tray::build(&handle)?;

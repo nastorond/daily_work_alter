@@ -62,6 +62,20 @@ enum Plan {
     Build,
 }
 
+/// What `show_window` actually managed to do.
+///
+/// `Building` has to be distinguished from `Failed`: when two callers race (the
+/// scheduler tick landing at the same moment as a manual launch), the loser used
+/// to be told "no window appeared" and logged a failure for a window that showed
+/// up a moment later. The scheduler needs to tell "it didn't work" apart from
+/// "someone else is doing it".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShowResult {
+    Shown,
+    Building,
+    Failed,
+}
+
 /// Opens the given view, reusing the window when it is already showing exactly
 /// that view. Returns whether a window is up as a result — callers that must
 /// know the reminder was actually delivered depend on this.
@@ -81,9 +95,9 @@ enum Plan {
 /// The lock is released before any windowing call: build() from a background
 /// thread dispatches to the main thread, which would deadlock if the main thread
 /// were itself waiting on this lock.
-pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) -> bool {
+pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) -> ShowResult {
     let Some(data) = app.try_state::<AppData>() else {
-        return false;
+        return ShowResult::Failed;
     };
 
     let plan = {
@@ -107,13 +121,13 @@ pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) -> bool
     };
 
     match plan {
-        Plan::Skip => return app.get_webview_window(MAIN_LABEL).is_some(),
+        Plan::Skip => return ShowResult::Building,
         Plan::Focus => {
             if let Some(win) = app.get_webview_window(MAIN_LABEL) {
                 bring_forward(&win);
-                return true;
+                return ShowResult::Shown;
             }
-            return false;
+            return ShowResult::Failed;
         }
         Plan::Build => {}
     }
@@ -130,13 +144,14 @@ pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) -> bool
     match build_window(app, url) {
         Ok(win) => {
             *data.window_state.lock().unwrap() = WindowState::Showing(mode);
+            *data.window_opened_at.lock().unwrap() = Some(chrono::Local::now());
             present(&win);
-            true
+            ShowResult::Shown
         }
         Err(e) => {
             *data.window_state.lock().unwrap() = WindowState::Closed;
-            log::line(&format!("window build failed ({mode:?}): {e}"));
-            false
+            log::line(&format!("창 생성 실패 ({mode:?}): {e}"));
+            ShowResult::Failed
         }
     }
 }
@@ -196,9 +211,17 @@ pub fn is_open(app: &AppHandle) -> bool {
     app.get_webview_window(MAIN_LABEL).is_some()
 }
 
+/// When the live window was opened, if one is up.
+pub fn opened_at(app: &AppHandle) -> Option<chrono::DateTime<chrono::Local>> {
+    let data = app.try_state::<AppData>()?;
+    let at = *data.window_opened_at.lock().unwrap();
+    at
+}
+
 pub fn destroy_window(app: &AppHandle) {
     if let Some(data) = app.try_state::<AppData>() {
         *data.window_state.lock().unwrap() = WindowState::Closed;
+        *data.window_opened_at.lock().unwrap() = None;
     }
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.destroy();
