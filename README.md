@@ -75,33 +75,6 @@ npm run kill             떠 있는 프로세스 종료
 디버그 빌드에는 트레이에 **테스트** 서브메뉴가 붙는다 — 온보딩·일일·주간 화면 강제 열기,
 이번 주 샘플 로그 생성/삭제, 알림 상태 초기화. 17:30이나 금요일까지 기다리지 않고 확인하기 위한 것.
 
-### 구조
-
-```
-src/                  프론트엔드 - 화면 전담
-├─ main.js             뷰 라우팅 (?view= 쿼리로 진입)
-├─ api.js              Rust 커맨드 래퍼
-├─ views/              daily · weekly · settings · onboarding · header
-└─ util/               date · markdown · bullet-editor
-
-src-tauri/src/        Rust - 타이머·설정·파일 IO
-├─ lib.rs              앱 조립
-├─ commands.rs         JS ↔ Rust 경계
-├─ scheduler.rs        60초 tick, 알림 판정
-├─ devtools.rs         디버그 전용 테스트 헬퍼
-├─ data/               디스크에 있는 것
-│   └─ config · state · storage · watcher
-└─ shell/              OS·Tauri 연동
-    └─ window · tray · shortcut · autostart · notify
-```
-
-Rust 쪽은 무엇에 의존하는지로 나눴다 — 디스크(`data`), OS(`shell`), 그리고 어느 쪽도
-아닌 순수 판단(`scheduler`). MVC로 나누지 않은 이유는 View가 프로세스 경계 너머 JS에
-있고, `shell/`의 절반이 Model·View·Controller 어디에도 해당하지 않기 때문이다.
-
-타이머가 JS가 아니라 Rust에 있는 이유는 창을 파기해서 메모리를 회수하기 때문이다.
-창이 없는 동안엔 JS가 돌지 않으므로, 스케줄링을 JS에 두면 알림이 아예 뜨지 않는다.
-
 아이콘은 `assets/app-icon.png`를 고친 뒤 `npx tauri icon assets/app-icon.png`.
 
 설계 판단의 근거는 커밋 메시지에 적어뒀다.
