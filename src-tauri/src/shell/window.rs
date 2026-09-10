@@ -191,6 +191,11 @@ pub fn focus_or_open(app: &AppHandle) {
     open_window_default(app);
 }
 
+/// Whether the main window currently exists.
+pub fn is_open(app: &AppHandle) -> bool {
+    app.get_webview_window(MAIN_LABEL).is_some()
+}
+
 pub fn destroy_window(app: &AppHandle) {
     if let Some(data) = app.try_state::<AppData>() {
         *data.window_state.lock().unwrap() = WindowState::Closed;

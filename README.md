@@ -57,6 +57,10 @@ Windows 11은 새 트레이 아이콘을 숨기므로 시계 왼쪽 `^`에서 �
 - `work.workdays` — **1=월 … 7=일**
 - `weekly.mode` — `fixedDay`(지정 요일) 또는 `lastWorkday`(그 주 마지막 근무일)
 - `notify.catchUpHours` — 절전 등으로 놓쳤을 때 몇 시간까지 늦게라도 띄울지
+- `notify.repeatMinutes` — 안 쓰고 닫았을 때 다시 띄우는 간격. `0`이면 하루 한 번만
+
+알림은 내용을 쓰거나 "오늘 건너뛰기"를 누를 때까지 반복된다. 안 뜨는 이유가 궁금하면
+`%APPDATA%\DailyWorkAlter\log.txt`를 보면 된다.
 
 지울 때는 exe, 위 폴더, 그리고
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`의 `DailyWorkAlter` 항목.

@@ -68,6 +68,10 @@ export async function renderSettings(container, { onClose } = {}) {
         <span><input type="number" id="f-snooze" min="1" max="120" style="width:70px" /> 분</span>
       </div>
       <div class="form-row">
+        <label>다시 알림</label>
+        <span><input type="number" id="f-repeat" min="0" max="240" style="width:70px" /> 분마다 (0이면 하루 한 번)</span>
+      </div>
+      <div class="form-row">
         <label>로그인 시 자동 실행</label>
         <label style="flex:1"><input type="checkbox" id="f-autostart" /></label>
       </div>
@@ -93,6 +97,7 @@ export async function renderSettings(container, { onClose } = {}) {
   attachTimeField(modal, "f-end-time");
   q("#f-minutes-before").value = config.notify.minutesBefore;
   q("#f-snooze").value = config.notify.snoozeMinutes;
+  q("#f-repeat").value = config.notify.repeatMinutes;
   q("#f-hotkey").value = config.hotkey;
   q("#f-autostart").checked = config.autostart;
   q("#f-weekly-enabled").checked = config.weekly.enabled;
@@ -161,6 +166,7 @@ export async function renderSettings(container, { onClose } = {}) {
         ...config.notify,
         minutesBefore: Number(q("#f-minutes-before").value) || 0,
         snoozeMinutes: Number(q("#f-snooze").value) || 1,
+        repeatMinutes: Math.max(0, Number(q("#f-repeat").value) || 0),
       },
       weekly: {
         ...config.weekly,

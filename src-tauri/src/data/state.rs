@@ -7,7 +7,10 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AppState {
-    pub last_notified_date: Option<String>,
+    /// When the reminder was last shown (RFC3339). A timestamp rather than a
+    /// date because the reminder now repeats until something is written; the
+    /// date alone could only express "once a day".
+    pub last_notified_at: Option<String>,
     pub snooze_until: Option<String>,
     #[serde(default)]
     pub skipped_dates: Vec<String>,

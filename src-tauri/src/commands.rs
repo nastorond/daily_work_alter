@@ -75,11 +75,6 @@ pub fn snooze(app: AppHandle, state: State<AppData>) {
         let mut st = state.state.lock().unwrap();
         let until = Local::now() + Duration::minutes(cfg.notify.snooze_minutes as i64);
         st.snooze_until = Some(until.to_rfc3339());
-        // tick() stamps last_notified_date when it pops the window, and
-        // should_notify() treats that as "already handled today". Snoozing has to
-        // clear it or the reminder would never come back — the snooze_until check
-        // above is what gates the retry from here on.
-        st.last_notified_date = None;
         let _ = crate::data::state::save(&st);
     }
     window::destroy_window(&app);
@@ -100,6 +95,15 @@ pub fn skip_today(app: AppHandle, state: State<AppData>) {
 }
 
 #[tauri::command]
-pub fn close_window(app: AppHandle) {
+pub fn close_window(app: AppHandle, state: State<AppData>) {
+    // Closing without writing anything is not a dismissal for the day — the
+    // reminder repeats. Stamp the time so the next one is a repeat interval
+    // away rather than arriving on the very next tick, which would make the
+    // box impossible to put down without "오늘 건너뛰기".
+    {
+        let mut st = state.state.lock().unwrap();
+        st.last_notified_at = Some(Local::now().to_rfc3339());
+        let _ = crate::data::state::save(&st);
+    }
     window::destroy_window(&app);
 }

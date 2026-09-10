@@ -42,6 +42,11 @@ fn default_snooze_minutes() -> u32 {
 fn default_catch_up_hours() -> u32 {
     4
 }
+/// How long to wait before reminding again when the box was closed without
+/// anything written. 0 means remind only once a day.
+fn default_repeat_minutes() -> u32 {
+    10
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,6 +57,8 @@ pub struct NotifyConfig {
     pub snooze_minutes: u32,
     #[serde(default = "default_catch_up_hours")]
     pub catch_up_hours: u32,
+    #[serde(default = "default_repeat_minutes")]
+    pub repeat_minutes: u32,
 }
 
 impl Default for NotifyConfig {
@@ -60,6 +67,7 @@ impl Default for NotifyConfig {
             minutes_before: default_minutes_before(),
             snooze_minutes: default_snooze_minutes(),
             catch_up_hours: default_catch_up_hours(),
+            repeat_minutes: default_repeat_minutes(),
         }
     }
 }
