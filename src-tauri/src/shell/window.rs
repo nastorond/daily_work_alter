@@ -1,3 +1,4 @@
+use crate::data::log;
 use crate::scheduler::ViewMode;
 use crate::AppData;
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
@@ -5,6 +6,22 @@ use tauri::{AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuild
 const WIN_WIDTH: f64 = 620.0;
 const WIN_HEIGHT: f64 = 560.0;
 const MAIN_LABEL: &str = "main";
+
+/// Tracks the window across the gap between "someone decided to open one" and
+/// "one exists".
+///
+/// `Building` and `Showing` have to be distinguished. Collapsing them into a
+/// single "claimed" flag is what broke the reminder before: a claim left behind
+/// by a window that vanished without going through `destroy_window` (a native
+/// close, a webview crash) made every later request believe someone else was
+/// already handling it, so the scheduler's pop was swallowed and nothing ever
+/// appeared again until restart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowState {
+    Closed,
+    Building(ViewMode),
+    Showing(ViewMode),
+}
 
 fn route_for(mode: ViewMode) -> &'static str {
     match mode {
@@ -37,8 +54,17 @@ fn bring_forward(win: &tauri::WebviewWindow) {
     let _ = win.set_focus();
 }
 
-/// Opens the given view, rebuilding the window unless it is already showing
-/// exactly that view.
+enum Plan {
+    /// Another caller is mid-build; it will present the window.
+    Skip,
+    /// This exact view is already up.
+    Focus,
+    Build,
+}
+
+/// Opens the given view, reusing the window when it is already showing exactly
+/// that view. Returns whether a window is up as a result — callers that must
+/// know the reminder was actually delivered depend on this.
 ///
 /// Rebuilding is the normal path and is deliberate: the window is destroyed
 /// rather than hidden when it closes, so the WebView2 process is actually torn
@@ -48,39 +74,48 @@ fn bring_forward(win: &tauri::WebviewWindow) {
 ///
 /// But rebuilding a window that is already up and being typed into loses work:
 /// autosave runs on a 500ms debounce and a Rust-side destroy() gives the page no
-/// chance to flush. So an identical view is reused instead. Opening settings
-/// always rebuilds, because the modal is driven by the query string rather than
-/// by a message to the live page.
+/// chance to flush. So an identical view is reused. Opening settings always
+/// rebuilds, because the modal is driven by the query string rather than by a
+/// message to the live page.
 ///
-/// Concurrency: the lock is used to *claim* the view, and released before any
-/// windowing call. Claiming before building is what stops the startup race —
-/// the scheduler's first tick and the manual-launch path can arrive here at the
-/// same moment, and a concurrent caller asking for the same view now sees the
-/// claim and backs off instead of building a rival window that destroys the
-/// first. The lock is deliberately not held across window creation: build() from
-/// a background thread dispatches to the main thread, which would deadlock if
-/// the main thread were itself waiting on this lock.
-pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) {
+/// The lock is released before any windowing call: build() from a background
+/// thread dispatches to the main thread, which would deadlock if the main thread
+/// were itself waiting on this lock.
+pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) -> bool {
     let Some(data) = app.try_state::<AppData>() else {
-        return;
+        return false;
     };
 
-    let already_claimed = {
-        let mut current = data.current_view.lock().unwrap();
-        if !open_settings && *current == Some(mode) {
-            true
-        } else {
-            *current = Some(mode);
-            false
+    let plan = {
+        let mut st = data.window_state.lock().unwrap();
+        match *st {
+            WindowState::Building(_) => Plan::Skip,
+            // The window-exists check is what makes a stale Showing self-heal:
+            // if the window is gone, this falls through and rebuilds.
+            WindowState::Showing(m)
+                if !open_settings
+                    && m == mode
+                    && app.get_webview_window(MAIN_LABEL).is_some() =>
+            {
+                Plan::Focus
+            }
+            _ => {
+                *st = WindowState::Building(mode);
+                Plan::Build
+            }
         }
     };
 
-    if already_claimed {
-        if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-            bring_forward(&win);
+    match plan {
+        Plan::Skip => return app.get_webview_window(MAIN_LABEL).is_some(),
+        Plan::Focus => {
+            if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+                bring_forward(&win);
+                return true;
+            }
+            return false;
         }
-        // No window yet means another caller is mid-build; it will present it.
-        return;
+        Plan::Build => {}
     }
 
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
@@ -93,10 +128,15 @@ pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) {
     }
 
     match build_window(app, url) {
-        Ok(win) => present(&win),
+        Ok(win) => {
+            *data.window_state.lock().unwrap() = WindowState::Showing(mode);
+            present(&win);
+            true
+        }
         Err(e) => {
-            eprintln!("failed to create window: {e}");
-            *data.current_view.lock().unwrap() = None;
+            *data.window_state.lock().unwrap() = WindowState::Closed;
+            log::line(&format!("window build failed ({mode:?}): {e}"));
+            false
         }
     }
 }
@@ -122,10 +162,10 @@ fn due_mode(app: &AppHandle) -> ViewMode {
 /// First-run only: a trimmed-down settings form asking just for work hours and
 /// the weekly-summary day. Also reachable from the debug-only tray test menu.
 pub fn show_onboarding(app: &AppHandle) {
-    // Onboarding is neither daily nor weekly, so leaving the claim as None means
+    // Onboarding is neither daily nor weekly, so leaving the state Closed means
     // a later request for a real view rebuilds rather than reusing this window.
     if let Some(data) = app.try_state::<AppData>() {
-        *data.current_view.lock().unwrap() = None;
+        *data.window_state.lock().unwrap() = WindowState::Closed;
     }
 
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
@@ -134,7 +174,7 @@ pub fn show_onboarding(app: &AppHandle) {
 
     match build_window(app, "index.html?view=onboarding".to_string()) {
         Ok(win) => present(&win),
-        Err(e) => eprintln!("failed to create onboarding window: {e}"),
+        Err(e) => log::line(&format!("onboarding window build failed: {e}")),
     }
 }
 
@@ -153,7 +193,7 @@ pub fn focus_or_open(app: &AppHandle) {
 
 pub fn destroy_window(app: &AppHandle) {
     if let Some(data) = app.try_state::<AppData>() {
-        *data.current_view.lock().unwrap() = None;
+        *data.window_state.lock().unwrap() = WindowState::Closed;
     }
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.destroy();

@@ -67,8 +67,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "write_now" => window::show_window(app, ViewMode::Daily, false),
-            "view_week" => window::show_window(app, ViewMode::Weekly, false),
+            "write_now" => { window::show_window(app, ViewMode::Daily, false); }
+            "view_week" => { window::show_window(app, ViewMode::Weekly, false); }
             "settings" => window::show_settings(app),
             "open_config" => open_path(app, crate::data::config::config_path()),
             "open_log_dir" => {
@@ -81,8 +81,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             "test_notify" => crate::scheduler::force_show(app),
 
             "t_onboarding" => window::show_onboarding(app),
-            "t_daily" => window::show_window(app, ViewMode::Daily, false),
-            "t_weekly" => window::show_window(app, ViewMode::Weekly, false),
+            "t_daily" => { window::show_window(app, ViewMode::Daily, false); }
+            "t_weekly" => { window::show_window(app, ViewMode::Weekly, false); }
             // Seed/clear reopen the weekly view so the result is visible immediately.
             "t_seed" => {
                 crate::devtools::seed_week(app);
