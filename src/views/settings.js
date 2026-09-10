@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { attachTimeField, getTime, setTime, timeFieldHtml } from "./time-field.js";
 
 const WEEKDAY_LABELS = [
   { iso: 1, label: "월" },
@@ -25,11 +26,11 @@ export async function renderSettings(container, { onClose } = {}) {
 
       <div class="form-row">
         <label>출근 시간</label>
-        <input type="time" id="f-start-time" />
+        ${timeFieldHtml("f-start-time")}
       </div>
       <div class="form-row">
         <label>퇴근 시간</label>
-        <input type="time" id="f-end-time" />
+        ${timeFieldHtml("f-end-time")}
       </div>
       <div class="form-row">
         <label>알림 시점</label>
@@ -86,8 +87,10 @@ export async function renderSettings(container, { onClose } = {}) {
   container.appendChild(modal);
 
   const q = (sel) => modal.querySelector(sel);
-  q("#f-start-time").value = config.work.startTime;
-  q("#f-end-time").value = config.work.endTime;
+  setTime(modal, "f-start-time", config.work.startTime);
+  setTime(modal, "f-end-time", config.work.endTime);
+  attachTimeField(modal, "f-start-time");
+  attachTimeField(modal, "f-end-time");
   q("#f-minutes-before").value = config.notify.minutesBefore;
   q("#f-snooze").value = config.notify.snoozeMinutes;
   q("#f-hotkey").value = config.hotkey;
@@ -131,14 +134,18 @@ export async function renderSettings(container, { onClose } = {}) {
 
   q("#f-save").addEventListener("click", async () => {
     const workdays = [...modal.querySelectorAll('#f-workdays input:checked')].map((cb) => Number(cb.value));
-    const startTime = q("#f-start-time").value;
-    const endTime = q("#f-end-time").value;
+    const startTime = getTime(modal, "f-start-time");
+    const endTime = getTime(modal, "f-end-time");
 
     if (workdays.length === 0) {
       showError("근무 요일을 최소 1개 선택하세요.");
       return;
     }
-    if (!startTime || !endTime || startTime >= endTime) {
+    if (!startTime || !endTime) {
+      showError("시간을 시 0~23, 분 0~59 범위로 입력하세요.");
+      return;
+    }
+    if (startTime >= endTime) {
       showError("출근 시간은 퇴근 시간보다 빨라야 합니다.");
       return;
     }

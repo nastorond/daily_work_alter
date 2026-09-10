@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { attachTimeField, getTime, setTime, timeFieldHtml } from "./time-field.js";
 
 const WEEKDAY_LABELS = [
   { iso: 1, label: "월" },
@@ -26,11 +27,11 @@ export async function renderOnboarding(root) {
       <div class="error-banner" id="ob-error" hidden></div>
       <div class="form-row">
         <label>출근 시간</label>
-        <input type="time" id="ob-start-time" />
+        ${timeFieldHtml("ob-start-time")}
       </div>
       <div class="form-row">
         <label>퇴근 시간</label>
-        <input type="time" id="ob-end-time" />
+        ${timeFieldHtml("ob-end-time")}
       </div>
       <div class="form-row">
         <label>주간 요약 요일</label>
@@ -45,16 +46,20 @@ export async function renderOnboarding(root) {
   `;
 
   const q = (sel) => root.querySelector(sel);
-  q("#ob-start-time").value = config.work.startTime;
-  q("#ob-end-time").value = config.work.endTime;
+  setTime(root, "ob-start-time", config.work.startTime);
+  setTime(root, "ob-end-time", config.work.endTime);
+  attachTimeField(root, "ob-start-time");
+  attachTimeField(root, "ob-end-time");
   q("#ob-weekly-day").value = String(config.weekly.day);
 
   q("#ob-start").addEventListener("click", async () => {
-    const startTime = q("#ob-start-time").value;
-    const endTime = q("#ob-end-time").value;
+    const startTime = getTime(root, "ob-start-time");
+    const endTime = getTime(root, "ob-end-time");
     if (!startTime || !endTime || startTime >= endTime) {
       const banner = q("#ob-error");
-      banner.textContent = "출근 시간은 퇴근 시간보다 빨라야 합니다.";
+      banner.textContent = !startTime || !endTime
+        ? "시간을 시 0~23, 분 0~59 범위로 입력하세요."
+        : "출근 시간은 퇴근 시간보다 빨라야 합니다.";
       banner.hidden = false;
       return;
     }

@@ -313,7 +313,6 @@ button.btn.ghost {
 }
 
 .form-row input[type="text"],
-.form-row input[type="time"],
 .form-row input[type="number"],
 .form-row select {
   flex: 1;
@@ -323,6 +322,34 @@ button.btn.ghost {
   background: var(--bg-soft);
   color: var(--text);
   font-size: 13px;
+}
+
+/* 24-hour 시:분 pair — see views/time-field.js for why this isn't input[type=time]. */
+.time-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Needs to out-specify `.form-row input[type="number"] { flex: 1 }`, which would
+   otherwise stretch both boxes across the whole row. */
+.form-row .time-field input[type="number"] {
+  flex: 0 0 58px;
+  width: 58px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 4px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-field .tf-sep {
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .form-row.radios {
