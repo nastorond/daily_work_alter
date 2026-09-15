@@ -107,3 +107,25 @@ pub fn close_window(app: AppHandle, state: State<AppData>) {
     }
     window::destroy_window(&app);
 }
+
+#[tauri::command]
+pub fn export_preview(state: State<AppData>, anchor: String) -> Vec<crate::export::outline::OutlineLine> {
+    let cfg = state.config.lock().unwrap().clone();
+    crate::export::preview(&cfg, &anchor)
+}
+
+#[tauri::command]
+pub fn export_default_name(anchor: String) -> String {
+    crate::export::suggested_filename(&anchor)
+}
+
+#[tauri::command]
+pub fn export_write(
+    state: State<AppData>,
+    anchor: String,
+    lines: Vec<crate::export::outline::OutlineLine>,
+    dest: String,
+) -> Result<(), String> {
+    let cfg = state.config.lock().unwrap().clone();
+    crate::export::write(&cfg, &anchor, &lines, &dest)
+}

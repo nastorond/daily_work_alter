@@ -1,4 +1,5 @@
 const { invoke } = window.__TAURI__.core;
+const { save } = window.__TAURI__.dialog;
 
 export const api = {
   getConfig: () => invoke("get_config"),
@@ -12,4 +13,10 @@ export const api = {
   snooze: () => invoke("snooze"),
   skipToday: () => invoke("skip_today"),
   closeWindow: () => invoke("close_window"),
+  exportPreview: (anchor) => invoke("export_preview", { anchor }),
+  exportDefaultName: (anchor) => invoke("export_default_name", { anchor }),
+  exportWrite: (anchor, lines, dest) => invoke("export_write", { anchor, lines, dest }),
+  /** Native save dialog; resolves to a path or null when cancelled. */
+  saveDialog: (defaultPath) =>
+    save({ defaultPath, filters: [{ name: "한글 문서", extensions: ["hwpx"] }] }),
 };

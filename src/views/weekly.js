@@ -10,6 +10,7 @@ import {
   linesToItems,
 } from "../util/markdown.js";
 import { attachBulletEditor } from "../util/bullet-editor.js";
+import { openExportPreview } from "./export-preview.js";
 
 export async function renderWeekly(root) {
   const today = todayStr();
@@ -39,6 +40,7 @@ export async function renderWeekly(root) {
   footer.className = "footer";
   footer.innerHTML = `
     <button class="btn" id="btn-copy">주간 전체 복사</button>
+    <button class="btn" id="btn-hwp">한글 문서로 저장</button>
     <button class="btn primary" id="btn-save-close">저장하고 닫기</button>
   `;
   root.appendChild(footer);
@@ -134,6 +136,10 @@ export async function renderWeekly(root) {
     const original = btn.textContent;
     btn.textContent = "복사됨!";
     setTimeout(() => (btn.textContent = original), 1200);
+  });
+  footer.querySelector("#btn-hwp").addEventListener("click", async () => {
+    await saveTodayInput();
+    openExportPreview(today);
   });
   footer.querySelector("#btn-save-close").addEventListener("click", saveAndClose);
 
