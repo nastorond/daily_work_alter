@@ -1,4 +1,5 @@
 use crate::data::state::AppState;
+use crate::data::storage;
 use crate::shell::window::ShowResult;
 use crate::AppData;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime};
@@ -53,6 +54,7 @@ pub fn view_mode_for(cfg: &crate::data::config::Config, now: DateTime<Local>) ->
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     Due,
+    AlreadyWritten,
     Onboarding,
     /// Today was missed entirely; show it late, once.
     DueCatchUp,
@@ -70,6 +72,7 @@ impl Decision {
     fn label(self) -> &'static str {
         match self {
             Decision::Due => "띄울 차례",
+            Decision::AlreadyWritten => "오늘 몫을 띄웠고 기록도 남아 있음",
             Decision::Onboarding => "최초 설정 중",
             Decision::DueCatchUp => "놓친 날 보충",
             Decision::NotWorkday => "근무 요일이 아님",
@@ -95,9 +98,9 @@ impl Decision {
 ///
 /// Two deliberate choices here:
 ///
-/// Whether anything is already written does not matter. It used to stop the
-/// reminder, but "I jotted one line at lunch" is not a reason to skip the
-/// end-of-day pass, and it made an accidental early save silently cancel the day.
+/// Existing content does not stop the first pop of the day — that used to be a
+/// rule and it meant an early note silently cancelled the whole day. It does
+/// stop the repeats once the box has appeared and something is recorded.
 ///
 /// endTime is a hard deadline. There is no catch-up grace past it: the window is
 /// for the half hour before leaving, so if the machine was asleep through that
@@ -158,6 +161,18 @@ pub fn notify_decision(
 
     if now < window_start {
         return Decision::OutsideWindow;
+    }
+
+    // The first pop of the day happens whatever is already written — a line
+    // jotted at lunch is not a reason to skip the end-of-day pass, and letting
+    // it cancel the day silently was the original bug. It does stop the
+    // *repeats*: once the box has appeared and something is recorded, the
+    // reminder has done its job and coming back is nagging. The date check is
+    // what separates the two, so this never suppresses the first showing.
+    if state.last_shown_date.as_deref() == Some(today.as_str())
+        && storage::log_has_content(cfg, &today)
+    {
+        return Decision::AlreadyWritten;
     }
 
     if now <= end {
@@ -377,14 +392,41 @@ mod tests {
         assert_eq!(notify_decision(&c, &stale, at(21, 0)), Decision::DueCatchUp);
     }
 
-    /// Written content no longer suppresses the reminder — one line jotted at
-    /// lunch is not a reason to skip the end-of-day pass.
+    /// Content does not suppress the day's *first* pop — a line jotted at lunch
+    /// is not a reason to skip the end-of-day pass.
     #[test]
-    fn already_written_content_does_not_stop_the_reminder() {
-        let c = cfg("saved");
+    fn written_content_does_not_stop_the_first_pop() {
+        let c = cfg("saved_first");
         storage::write_log(&c, TODAY, &["한 줄 썼음".to_string()]).unwrap();
         assert!(storage::log_has_content(&c, TODAY));
         assert!(should_notify(&c, &fresh_state(), at(16, 30)));
+    }
+
+    /// ...but once it has popped and something is recorded, it stops. Saving
+    /// and closing is the end of the day, not an invitation to come back in ten
+    /// minutes.
+    #[test]
+    fn written_content_stops_the_repeats() {
+        let c = cfg("saved_repeat");
+        storage::write_log(&c, TODAY, &["한 줄 썼음".to_string()]).unwrap();
+        let mut st = fresh_state();
+        st.last_shown_date = Some(TODAY.to_string());
+        st.last_notified_at = Some(at(16, 30).to_rfc3339());
+        assert_eq!(
+            notify_decision(&c, &st, at(16, 45)),
+            Decision::AlreadyWritten
+        );
+    }
+
+    /// An empty box after a pop still repeats — nothing was recorded.
+    #[test]
+    fn an_empty_box_still_repeats_after_the_first_pop() {
+        let c = cfg("empty_repeat");
+        storage::write_log(&c, TODAY, &[]).unwrap();
+        let mut st = fresh_state();
+        st.last_shown_date = Some(TODAY.to_string());
+        st.last_notified_at = Some(at(16, 30).to_rfc3339());
+        assert!(should_notify(&c, &st, at(16, 45)));
     }
 
     /// A pop holds the reminder off for `repeatMinutes`, then it comes back —

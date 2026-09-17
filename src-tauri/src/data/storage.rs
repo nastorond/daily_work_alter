@@ -120,9 +120,7 @@ pub fn read_log(cfg: &Config, date: &str) -> LogEntry {
     }
 }
 
-/// Kept for the tests and for callers that need to know whether a day actually
-/// has anything in it; the notify decision no longer consults it.
-#[allow(dead_code)]
+/// Whether a day has anything recorded in it.
 pub fn log_has_content(cfg: &Config, date: &str) -> bool {
     let entry = read_log(cfg, date);
     entry.exists && !entry.items.is_empty()
