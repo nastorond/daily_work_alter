@@ -497,3 +497,36 @@ button.btn.ghost {
   color: var(--text-muted);
   align-self: center;
 }
+
+/* ── 지난주 / 이번 주 전환 ─────────────────────────────── */
+
+/* .body is a scrolling flex column: without flex-shrink:0 a long week squeezes
+   this to zero height (overflow:hidden drops its min-height to 0), and without
+   align-self it stretches across the whole row. */
+.week-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.week-switch .seg {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 14px;
+  cursor: pointer;
+}
+
+.week-switch .seg + .seg {
+  border-left: 1px solid var(--border);
+}
+
+.week-switch .seg.active {
+  background: var(--bg-soft);
+  color: var(--text);
+  font-weight: 600;
+}

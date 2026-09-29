@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { mountHeader } from "./header.js";
-import { isoWeekNumber, shortLabel, todayStr } from "../util/date.js";
+import { addDays, isoWeekNumber, shortLabel, todayStr } from "../util/date.js";
 import {
   buildWeeklyCopyText,
   itemDepth,
@@ -12,12 +12,23 @@ import {
 import { attachBulletEditor } from "../util/bullet-editor.js";
 import { openExportPreview } from "./export-preview.js";
 
-export async function renderWeekly(root) {
+/**
+ * The week view.
+ *
+ * `weekOffset` is 0 for this week or -1 for last week — and no further. The
+ * report is "지난주 실적", so the week before this one has to be reachable (a
+ * report missed on Friday gets written on Monday, when "this week" is empty);
+ * anything older is history, which the log folder already keeps.
+ */
+export async function renderWeekly(root, weekOffset = 0) {
   const today = todayStr();
-  const days = await api.readWeek(today);
-  const { year, week } = isoWeekNumber(today);
-  const first = days[0]?.date ?? today;
-  const last = days[days.length - 1]?.date ?? today;
+  const isCurrent = weekOffset === 0;
+  const anchor = isCurrent ? today : addDays(today, -7);
+
+  const days = await api.readWeek(anchor);
+  const { year, week } = isoWeekNumber(anchor);
+  const first = days[0]?.date ?? anchor;
+  const last = days[days.length - 1]?.date ?? anchor;
 
   root.innerHTML = "";
   mountHeader(root, `${year}년 ${week}주차 (${shortLabel(first)} ~ ${shortLabel(last)})`, {
@@ -28,29 +39,26 @@ export async function renderWeekly(root) {
   body.className = "body";
   root.appendChild(body);
 
+  const switcher = document.createElement("div");
+  switcher.className = "week-switch";
+  switcher.innerHTML = `
+    <button class="seg ${isCurrent ? "" : "active"}" data-offset="-1">지난주</button>
+    <button class="seg ${isCurrent ? "active" : ""}" data-offset="0">이번 주</button>
+  `;
+  body.appendChild(switcher);
+
   const pastList = document.createElement("div");
   pastList.className = "week-days";
   body.appendChild(pastList);
-
-  const todaySection = document.createElement("div");
-  todaySection.className = "week-day today";
-  body.appendChild(todaySection);
 
   const footer = document.createElement("div");
   footer.className = "footer";
   footer.innerHTML = `
     <button class="btn" id="btn-copy">주간 전체 복사</button>
     <button class="btn" id="btn-hwp">한글 문서로 저장</button>
-    <button class="btn primary" id="btn-save-close">저장하고 닫기</button>
+    <button class="btn primary" id="btn-save-close">${isCurrent ? "저장하고 닫기" : "닫기"}</button>
   `;
   root.appendChild(footer);
-
-  const todayEntry = days.find((d) => d.isToday) ?? {
-    date: today,
-    weekday: "",
-    items: [],
-    isToday: true,
-  };
 
   /** Bullet list markup, with child items indented one level. */
   function itemsHtml(items) {
@@ -94,21 +102,35 @@ export async function renderWeekly(root) {
     attachBulletEditor(textarea, { onSubmit: () => textarea.blur() });
   }
 
+  // Today gets its own always-open input, but only in the current week; last
+  // week is all past days, each editable in place.
+  const todayEntry = isCurrent
+    ? days.find((d) => d.isToday) ?? { date: today, weekday: "", items: [], isToday: true }
+    : null;
+
   for (const day of days) {
-    if (day.isToday) continue;
+    if (todayEntry && day.isToday) continue;
     pastList.appendChild(renderPastRow(day));
   }
 
-  todaySection.innerHTML = `
-    <div style="flex:1">
-      <label class="field-label">${todayEntry.weekday} ${shortLabel(todayEntry.date)} 오늘 한 일</label>
-      <textarea class="bullet-input" id="today-input" spellcheck="false" style="margin-top:8px"></textarea>
-    </div>
-  `;
-  const todayInput = todaySection.querySelector("#today-input");
-  todayInput.value = itemsToText(todayEntry.items);
-
+  let todayInput = null;
   let debounceTimer = null;
+
+  if (todayEntry) {
+    const todaySection = document.createElement("div");
+    todaySection.className = "week-day today";
+    todaySection.innerHTML = `
+      <div style="flex:1">
+        <label class="field-label">${todayEntry.weekday} ${shortLabel(todayEntry.date)} 오늘 한 일</label>
+        <textarea class="bullet-input" id="today-input" spellcheck="false" style="margin-top:8px"></textarea>
+      </div>
+    `;
+    body.appendChild(todaySection);
+    todayInput = todaySection.querySelector("#today-input");
+    todayInput.value = itemsToText(todayEntry.items);
+    attachBulletEditor(todayInput, { onChange: scheduleAutosave, onSubmit: saveAndClose });
+  }
+
   function scheduleAutosave() {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(saveTodayInput, 500);
@@ -116,6 +138,7 @@ export async function renderWeekly(root) {
 
   async function saveTodayInput() {
     clearTimeout(debounceTimer);
+    if (!todayInput) return;
     const items = linesToItems(todayInput.value);
     todayEntry.items = items;
     await api.writeLog(todayEntry.date, items);
@@ -126,11 +149,18 @@ export async function renderWeekly(root) {
     api.closeWindow();
   }
 
-  attachBulletEditor(todayInput, { onChange: scheduleAutosave, onSubmit: saveAndClose });
+  for (const btn of switcher.querySelectorAll(".seg")) {
+    btn.addEventListener("click", async () => {
+      const offset = Number(btn.dataset.offset);
+      if (offset === weekOffset) return;
+      await saveTodayInput();
+      renderWeekly(root, offset);
+    });
+  }
 
   footer.querySelector("#btn-copy").addEventListener("click", async () => {
-    const allDays = days.map((d) => (d.isToday ? todayEntry : d));
-    const text = buildWeeklyCopyText(today, allDays);
+    const allDays = days.map((d) => (todayEntry && d.isToday ? todayEntry : d));
+    const text = buildWeeklyCopyText(anchor, allDays);
     await navigator.clipboard.writeText(text);
     const btn = footer.querySelector("#btn-copy");
     const original = btn.textContent;
@@ -139,12 +169,14 @@ export async function renderWeekly(root) {
   });
   footer.querySelector("#btn-hwp").addEventListener("click", async () => {
     await saveTodayInput();
-    openExportPreview(today);
+    openExportPreview(anchor);
   });
   footer.querySelector("#btn-save-close").addEventListener("click", saveAndClose);
 
-  todayInput.focus();
-  todayInput.selectionStart = todayInput.selectionEnd = todayInput.value.length;
+  if (todayInput) {
+    todayInput.focus();
+    todayInput.selectionStart = todayInput.selectionEnd = todayInput.value.length;
+  }
 }
 
 function escapeHtml(s) {

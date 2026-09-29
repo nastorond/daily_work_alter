@@ -134,9 +134,21 @@ impl Default for Config {
     }
 }
 
+/// Where config, state and logs live.
+///
+/// Debug builds get their own folder. They carry the tray "테스트" menu, whose
+/// sample-seeding overwrites this week's logs and whose clear action deletes
+/// them — harmless on throwaway data, destructive on the real record. Sharing
+/// the folder with the installed app meant one stray `npm run dev` click could
+/// wipe a week of actual work.
 pub fn app_data_dir() -> PathBuf {
     let appdata = std::env::var("APPDATA").expect("APPDATA environment variable not set");
-    PathBuf::from(appdata).join("DailyWorkAlter")
+    let name = if cfg!(debug_assertions) {
+        "DailyWorkAlter-dev"
+    } else {
+        "DailyWorkAlter"
+    };
+    PathBuf::from(appdata).join(name)
 }
 
 pub fn config_path() -> PathBuf {

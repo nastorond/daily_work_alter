@@ -53,6 +53,13 @@ fn present(win: &tauri::WebviewWindow) {
     let _ = win.set_focus();
 }
 
+/// Sends the live page to another view. The URL is relative, so it resolves
+/// against whatever origin the app is served from (dev server or bundled).
+fn navigate(win: &tauri::WebviewWindow, url: &str) -> bool {
+    let target = serde_json::to_string(url).unwrap_or_else(|_| "\"index.html\"".into());
+    win.eval(&format!("location.replace({target})")).is_ok()
+}
+
 fn bring_forward(win: &tauri::WebviewWindow) {
     let _ = win.unminimize();
     let _ = win.show();
@@ -137,13 +144,27 @@ pub fn show_window(app: &AppHandle, mode: ViewMode, open_settings: bool) -> Show
         Plan::Build => {}
     }
 
-    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        let _ = win.destroy();
-    }
-
     let mut url = format!("index.html?view={}", route_for(mode));
     if open_settings {
         url.push_str("&settings=1");
+    }
+
+    // A window is already up but showing something else: point it at the new
+    // view rather than destroying it and building a replacement. destroy() only
+    // *requests* teardown — the "main" label stays registered until the event
+    // loop gets to it — so building straight after failed with "a webview with
+    // label `main` already exists", and since the old window was already on its
+    // way out, the user was left with nothing on screen.
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        if navigate(&win, &url) {
+            *data.window_state.lock().unwrap() = WindowState::Showing(mode);
+            *data.window_opened_at.lock().unwrap() = Some(chrono::Local::now());
+            bring_forward(&win);
+            return ShowResult::Shown;
+        }
+        *data.window_state.lock().unwrap() = WindowState::Closed;
+        log::line(&format!("창 화면 전환 실패 ({mode:?})"));
+        return ShowResult::Failed;
     }
 
     match build_window(app, url) {
@@ -183,12 +204,23 @@ fn due_mode(app: &AppHandle) -> ViewMode {
 /// the weekly-summary day. Also reachable from the debug-only tray test menu.
 pub fn show_onboarding(app: &AppHandle) {
     claim_onboarding(app);
+    let url = "index.html?view=onboarding";
 
+    // Same reasoning as show_window: reuse a live window instead of racing its
+    // teardown.
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        let _ = win.destroy();
+        if navigate(&win, url) {
+            if let Some(data) = app.try_state::<AppData>() {
+                *data.window_opened_at.lock().unwrap() = Some(chrono::Local::now());
+            }
+            bring_forward(&win);
+        } else {
+            log::line("온보딩 화면 전환 실패");
+        }
+        return;
     }
 
-    match build_window(app, "index.html?view=onboarding".to_string()) {
+    match build_window(app, url.to_string()) {
         Ok(win) => {
             if let Some(data) = app.try_state::<AppData>() {
                 *data.window_opened_at.lock().unwrap() = Some(chrono::Local::now());
