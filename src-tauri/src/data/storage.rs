@@ -179,7 +179,8 @@ pub fn week_monday(anchor: NaiveDate) -> NaiveDate {
     anchor - Duration::days(offset as i64)
 }
 
-/// All configured workdays in the week containing `anchor`, oldest first.
+/// The working days of the week containing `anchor`, oldest first. Days
+/// marked off in `holidays` are left out unless something was recorded on them.
 pub fn read_week(cfg: &Config, anchor: &str) -> Vec<DayLog> {
     let anchor_date =
         NaiveDate::parse_from_str(anchor, "%Y-%m-%d").unwrap_or_else(|_| Local::now().date_naive());
@@ -194,6 +195,11 @@ pub fn read_week(cfg: &Config, anchor: &str) -> Vec<DayLog> {
             }
             let date_str = d.format("%Y-%m-%d").to_string();
             let entry = read_log(cfg, &date_str);
+            // A day off drops out of the week — unless something was written on
+            // it anyway, which should stay visible rather than vanish.
+            if cfg.is_holiday(d) && entry.items.is_empty() {
+                return None;
+            }
             Some(DayLog {
                 date: date_str,
                 weekday: weekday_kr(d).to_string(),

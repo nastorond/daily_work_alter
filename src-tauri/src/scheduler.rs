@@ -18,15 +18,17 @@ fn parse_time_today(hhmm: &str, today: DateTime<Local>) -> Option<DateTime<Local
     today.date_naive().and_time(t).and_local_timezone(Local).single()
 }
 
-/// The single work-day iso-weekday (1=Mon..7=Sun) with the highest value in
-/// `work.workdays` — used as "the last workday of the week" for `lastWorkday` mode.
-fn last_workday_iso(cfg: &crate::data::config::Config) -> Option<u8> {
-    cfg.work.workdays.iter().copied().max()
-}
-
+/// Whether today is the last working day of its week, holidays excluded — so a
+/// week whose Friday is a holiday has its weekly summary on Thursday instead of
+/// on a day nobody is at work.
 pub fn is_last_workday(cfg: &crate::data::config::Config, now: DateTime<Local>) -> bool {
-    let iso = now.weekday().number_from_monday() as u8;
-    last_workday_iso(cfg) == Some(iso)
+    let today = now.date_naive();
+    let monday = crate::data::storage::week_monday(today);
+    let last = (0..7i64)
+        .map(|i| monday + Duration::days(i))
+        .filter(|d| cfg.is_working_day(*d))
+        .last();
+    last == Some(today)
 }
 
 pub fn view_mode_for(cfg: &crate::data::config::Config, now: DateTime<Local>) -> ViewMode {
@@ -54,6 +56,7 @@ pub fn view_mode_for(cfg: &crate::data::config::Config, now: DateTime<Local>) ->
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     Due,
+    Holiday,
     AlreadyWritten,
     Onboarding,
     /// Today was missed entirely; show it late, once.
@@ -72,6 +75,7 @@ impl Decision {
     fn label(self) -> &'static str {
         match self {
             Decision::Due => "띄울 차례",
+            Decision::Holiday => "쉬는 날로 지정됨",
             Decision::AlreadyWritten => "오늘 몫을 띄웠고 기록도 남아 있음",
             Decision::Onboarding => "최초 설정 중",
             Decision::DueCatchUp => "놓친 날 보충",
@@ -140,6 +144,9 @@ pub fn notify_decision(
 
     if !cfg.work.workdays.contains(&iso_weekday) {
         return Decision::NotWorkday;
+    }
+    if cfg.is_holiday(now.date_naive()) {
+        return Decision::Holiday;
     }
     if state.skipped_dates.contains(&today) {
         return Decision::Skipped;
@@ -324,7 +331,7 @@ mod tests {
     use super::*;
     use crate::data::config::Config;
     use crate::data::storage;
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Timelike};
 
     /// 2026-09-10 is a Thursday (ISO weekday 4).
     const TODAY: &str = "2026-09-10";
@@ -565,4 +572,60 @@ mod tests {
         c.weekly.day = 5; // Friday
         assert_eq!(view_mode_for(&c, at(16, 30)), ViewMode::Daily);
     }
+    /// The week of 2026-10-05: Monday (개천절 대체공휴일) and Friday (한글날) off.
+    fn holiday_week_cfg(tag: &str) -> Config {
+        let mut c = cfg(tag);
+        c.holidays = vec!["2026-10-05".into(), "2026-10-09".into()];
+        c.weekly.enabled = true;
+        c.weekly.mode = "lastWorkday".into();
+        c
+    }
+
+    fn on(y: i32, m: u32, d: u32, h: u32) -> DateTime<Local> {
+        Local.with_ymd_and_hms(y, m, d, h, 0, 0).unwrap()
+    }
+
+    #[test]
+    fn no_reminder_on_a_holiday() {
+        let c = holiday_week_cfg("holiday_quiet");
+        assert_eq!(
+            notify_decision(&c, &fresh_state(), on(2026, 10, 9, 16)),
+            Decision::Holiday
+        );
+        // A normal workday in the same week still reminds.
+        assert_eq!(
+            notify_decision(&c, &fresh_state(), on(2026, 10, 8, 16).with_minute(45).unwrap()),
+            Decision::Due
+        );
+    }
+
+    /// With Friday off, the weekly summary moves to Thursday instead of landing
+    /// on a day nobody is at work.
+    #[test]
+    fn weekly_summary_skips_a_holiday_friday() {
+        let c = holiday_week_cfg("holiday_weekly");
+        assert_eq!(view_mode_for(&c, on(2026, 10, 8, 16)), ViewMode::Weekly);
+        assert_eq!(view_mode_for(&c, on(2026, 10, 7, 16)), ViewMode::Daily);
+        // An ordinary week is unaffected: Friday is still the last day.
+        assert_eq!(view_mode_for(&c, on(2026, 10, 16, 16)), ViewMode::Weekly);
+    }
+
+    #[test]
+    fn a_holiday_drops_out_of_the_week_unless_written_on() {
+        let c = holiday_week_cfg("holiday_week_view");
+        let dates: Vec<String> = storage::read_week(&c, "2026-10-07")
+            .into_iter()
+            .map(|d| d.date)
+            .collect();
+        assert_eq!(dates, vec!["2026-10-06", "2026-10-07", "2026-10-08"]);
+
+        // Something written on the holiday stays visible.
+        storage::write_log(&c, "2026-10-09", &["휴일에 잠깐 처리".to_string()]).unwrap();
+        let dates: Vec<String> = storage::read_week(&c, "2026-10-07")
+            .into_iter()
+            .map(|d| d.date)
+            .collect();
+        assert_eq!(dates.last().map(String::as_str), Some("2026-10-09"));
+    }
 }
+

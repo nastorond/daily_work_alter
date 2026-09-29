@@ -61,18 +61,24 @@ fn strip_markdown(text: &str) -> String {
 
 /// The week's workday entries, oldest first, with a level guessed for each line.
 ///
-/// An indented log line is always a detail — the writer already said it belongs
-/// under the line above. Only top-level lines are guessed at.
+/// Explicit marks win: a `#` line is a heading and an indented line is a
+/// detail, because the writer already said so. Only unmarked top-level lines
+/// are guessed at.
 pub fn build(cfg: &Config, anchor: &str) -> Vec<OutlineLine> {
     let mut out = Vec::new();
     for day in storage::read_week(cfg, anchor) {
         for item in &day.items {
-            let (is_child, text) = storage::split_depth(item);
-            let text = strip_markdown(text);
+            let (is_child, raw) = storage::split_depth(item);
+            // A line the writer marked with `#` is a heading, full stop — the
+            // length guess below is only for lines that carry no such mark.
+            let marked_heading = raw.trim_start().starts_with('#');
+            let text = strip_markdown(raw);
             if text.is_empty() {
                 continue;
             }
-            let level = if is_child {
+            let level = if marked_heading {
+                Level::Heading
+            } else if is_child {
                 Level::Detail
             } else if looks_like_heading(&text) {
                 Level::Heading
@@ -136,6 +142,24 @@ mod tests {
     #[test]
     fn long_lines_with_numbers_are_content() {
         assert!(!looks_like_heading("포함률 0.682 → 0.779 확보"));
+    }
+
+    /// A `#` line is a heading however long it is — the writer said so.
+    #[test]
+    fn marked_headings_skip_the_length_guess() {
+        let long = "#### 주말 사고 복구 — 3번·285번 발전량이 두 달치만 남아 있었다";
+        assert!(!looks_like_heading(&strip_markdown(long)));
+
+        let dir = std::env::temp_dir().join("dwa_outline_marked");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut cfg = Config::default();
+        cfg.log_dir = Some(dir.to_string_lossy().to_string());
+        storage::write_log(&cfg, "2026-09-21", &[long.to_string(), "그 아래 항목. 끝.".to_string()]).unwrap();
+
+        let lines = build(&cfg, "2026-09-21");
+        assert_eq!(lines[0].level, Level::Heading);
+        assert_eq!(lines[0].text, "주말 사고 복구 — 3번·285번 발전량이 두 달치만 남아 있었다");
+        assert_eq!(lines[1].level, Level::Item);
     }
 
     #[test]

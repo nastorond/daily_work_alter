@@ -60,11 +60,21 @@ export async function renderWeekly(root, weekOffset = 0) {
   `;
   root.appendChild(footer);
 
-  /** Bullet list markup, with child items indented one level. */
+  /**
+   * Bullet list markup. Child items are indented one level; lines the writer
+   * marked with `#` are shown as headings rather than as literal "####".
+   */
   function itemsHtml(items) {
     if (items.length === 0) return `<span class="empty">(작성 없음)</span>`;
     const lis = items
-      .map((i) => `<li class="${itemDepth(i) === 1 ? "child" : ""}">${escapeHtml(itemText(i))}</li>`)
+      .map((i) => {
+        const text = itemText(i);
+        const heading = /^#+\s*/.exec(text);
+        if (heading) {
+          return `<li class="heading">${escapeHtml(text.slice(heading[0].length))}</li>`;
+        }
+        return `<li class="${itemDepth(i) === 1 ? "child" : ""}">${escapeHtml(text)}</li>`;
+      })
       .join("");
     return `<ul>${lis}</ul>`;
   }

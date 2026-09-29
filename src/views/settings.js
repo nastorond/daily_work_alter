@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { todayStr } from "../util/date.js";
 import { attachTimeField, getTime, setTime, timeFieldHtml } from "./time-field.js";
 
 const WEEKDAY_LABELS = [
@@ -38,6 +39,16 @@ export async function renderSettings(container, { onClose } = {}) {
           ${WEEKDAY_LABELS.map(
             (w) => `<label><input type="checkbox" value="${w.iso}" />${w.label}</label>`
           ).join("")}
+        </div>
+      </div>
+      <div class="form-row holidays-row">
+        <label>쉬는 날</label>
+        <div class="holidays">
+          <div class="holiday-add">
+            <input type="date" id="f-holiday-date" />
+            <button class="btn" type="button" id="f-holiday-add">추가</button>
+          </div>
+          <div class="holiday-list" id="f-holiday-list"></div>
         </div>
       </div>
       <div class="form-row">
@@ -100,6 +111,42 @@ export async function renderSettings(container, { onClose } = {}) {
   for (const cb of modal.querySelectorAll('#f-workdays input[type="checkbox"]')) {
     cb.checked = config.work.workdays.includes(Number(cb.value));
   }
+
+  // Days off. Only today onward is listed — past entries stay in the config
+  // untouched (the "지난주" view still needs them to leave a holiday out) but
+  // would otherwise pile up here forever.
+  const holidays = new Set(config.holidays ?? []);
+  const WEEKDAY_KR = ["일", "월", "화", "수", "목", "금", "토"];
+  function renderHolidays() {
+    const today = todayStr();
+    const upcoming = [...holidays].filter((d) => d >= today).sort();
+    const list = q("#f-holiday-list");
+    if (upcoming.length === 0) {
+      list.innerHTML = `<span class="empty">없음</span>`;
+      return;
+    }
+    list.innerHTML = upcoming
+      .map((d) => {
+        const [y, m, day] = d.split("-").map(Number);
+        const wd = WEEKDAY_KR[new Date(y, m - 1, day).getDay()];
+        return `<span class="holiday-chip">${m}/${day} (${wd})<button type="button" data-date="${d}" title="삭제">×</button></span>`;
+      })
+      .join("");
+    for (const btn of list.querySelectorAll("button[data-date]")) {
+      btn.addEventListener("click", () => {
+        holidays.delete(btn.dataset.date);
+        renderHolidays();
+      });
+    }
+  }
+  q("#f-holiday-add").addEventListener("click", () => {
+    const value = q("#f-holiday-date").value;
+    if (!value) return;
+    holidays.add(value);
+    q("#f-holiday-date").value = "";
+    renderHolidays();
+  });
+  renderHolidays();
 
   function close() {
     modal.remove();
@@ -165,6 +212,7 @@ export async function renderSettings(container, { onClose } = {}) {
       },
       hotkey: hotkeyInput.value.trim(),
       autostart: q("#f-autostart").checked,
+      holidays: [...holidays].sort(),
     };
 
     try {

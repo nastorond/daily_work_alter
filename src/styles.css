@@ -530,3 +530,73 @@ button.btn.ghost {
   color: var(--text);
   font-weight: 600;
 }
+
+/* Lines written as markdown headings ("#### 학습") read as section titles. */
+.week-day .day-items li.heading {
+  list-style: none;
+  margin-left: -16px;
+  margin-top: 6px;
+  font-weight: 700;
+}
+
+.week-day .day-items li.heading:first-child {
+  margin-top: 0;
+}
+
+/* ── 쉬는 날 ─────────────────────────────────────────── */
+
+.form-row.holidays-row {
+  align-items: flex-start;
+}
+
+.holidays {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.holiday-add {
+  display: flex;
+  gap: 6px;
+}
+
+.holiday-add input[type="date"] {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.holiday-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.holiday-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+
+.holiday-chip button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.holiday-list .empty {
+  color: var(--text-muted);
+}

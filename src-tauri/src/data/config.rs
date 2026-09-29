@@ -118,6 +118,14 @@ pub struct Config {
     pub autostart: bool,
     #[serde(default)]
     pub log_dir: Option<String>,
+    /// Specific dates off (YYYY-MM-DD) — public holidays, company days off,
+    /// leave. A date list rather than a built-in calendar: substitute and
+    /// temporary holidays change every year, and a calendar would never know
+    /// about leave anyway. It also replaces the old workaround of editing
+    /// `workdays` for a holiday week, which silently dropped the *next* week's
+    /// reminders whenever the edit wasn't undone.
+    #[serde(default)]
+    pub holidays: Vec<String>,
 }
 
 impl Default for Config {
@@ -130,6 +138,7 @@ impl Default for Config {
             hotkey: default_hotkey(),
             autostart: default_autostart(),
             log_dir: None,
+            holidays: Vec::new(),
         }
     }
 }
@@ -141,6 +150,22 @@ impl Default for Config {
 /// them — harmless on throwaway data, destructive on the real record. Sharing
 /// the folder with the installed app meant one stray `npm run dev` click could
 /// wipe a week of actual work.
+impl Config {
+    /// Whether `date` is a regular workday (by weekday) that isn't marked off.
+    /// The single answer used by the scheduler, the week view and the export,
+    /// so none of them can disagree about which days count.
+    pub fn is_working_day(&self, date: chrono::NaiveDate) -> bool {
+        use chrono::Datelike;
+        let iso = date.weekday().number_from_monday() as u8;
+        self.work.workdays.contains(&iso) && !self.is_holiday(date)
+    }
+
+    pub fn is_holiday(&self, date: chrono::NaiveDate) -> bool {
+        let key = date.format("%Y-%m-%d").to_string();
+        self.holidays.iter().any(|h| h.trim() == key)
+    }
+}
+
 pub fn app_data_dir() -> PathBuf {
     let appdata = std::env::var("APPDATA").expect("APPDATA environment variable not set");
     let name = if cfg!(debug_assertions) {
