@@ -3,10 +3,10 @@ import { mountHeader } from "./header.js";
 import { addDays, isoWeekNumber, shortLabel, todayStr } from "../util/date.js";
 import {
   buildWeeklyCopyText,
+  hasBullet,
   itemDepth,
   itemText,
   itemsToText,
-  itemToLine,
   linesToItems,
 } from "../util/markdown.js";
 import { attachBulletEditor } from "../util/bullet-editor.js";
@@ -61,8 +61,9 @@ export async function renderWeekly(root, weekOffset = 0) {
   root.appendChild(footer);
 
   /**
-   * Bullet list markup. Child items are indented one level; lines the writer
-   * marked with `#` are shown as headings rather than as literal "####".
+   * Lines as written. A bullet is drawn only where the user typed `- `; plain
+   * lines stay plain. Indented lines sit one level in, and `#` lines are shown
+   * as headings rather than as literal "####".
    */
   function itemsHtml(items) {
     if (items.length === 0) return `<span class="empty">(작성 없음)</span>`;
@@ -73,7 +74,8 @@ export async function renderWeekly(root, weekOffset = 0) {
         if (heading) {
           return `<li class="heading">${escapeHtml(text.slice(heading[0].length))}</li>`;
         }
-        return `<li class="${itemDepth(i) === 1 ? "child" : ""}">${escapeHtml(text)}</li>`;
+        const classes = [itemDepth(i) === 1 ? "child" : "", hasBullet(i) ? "" : "plain"];
+        return `<li class="${classes.join(" ").trim()}">${escapeHtml(text)}</li>`;
       })
       .join("");
     return `<ul>${lis}</ul>`;
@@ -96,7 +98,7 @@ export async function renderWeekly(root, weekOffset = 0) {
     const itemsEl = row.querySelector(".day-items");
     itemsEl.innerHTML = "";
     const textarea = document.createElement("textarea");
-    textarea.value = day.items.length > 0 ? day.items.map(itemToLine).join("\n") : "- ";
+    textarea.value = itemsToText(day.items);
     itemsEl.appendChild(textarea);
     textarea.focus();
     textarea.selectionStart = textarea.selectionEnd = textarea.value.length;

@@ -600,3 +600,8 @@ button.btn.ghost {
 .holiday-list .empty {
   color: var(--text-muted);
 }
+
+/* A line written without "- " is shown without a bullet. */
+.week-day .day-items li.plain {
+  list-style: none;
+}

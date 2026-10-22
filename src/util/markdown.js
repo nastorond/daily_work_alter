@@ -1,20 +1,15 @@
 import { isoWeekNumber, shortLabel } from "./date.js";
 
 /**
- * Nesting is carried inside the item string itself: a child item starts with two
- * spaces. Only one level is supported, which keeps items plain strings all the
- * way through the Rust commands and the on-disk markdown. Mirrors CHILD_PREFIX
- * in src-tauri/src/storage.rs — change both together.
+ * Lines are kept exactly as written — indentation, and a leading `- ` only if
+ * the user typed one. Mirrors src-tauri/src/data/storage.rs.
+ *
+ * This used to normalise every line into a bullet: the dash was stripped on
+ * save and `- ` was stamped back on for display, the file and the clipboard. So
+ * a plain line came back with a dash, and `### 제목` turned into `- ### 제목`.
+ * Nothing is added any more; these helpers only *read* structure out of a line.
  */
 export const CHILD_PREFIX = "  ";
-
-export function itemDepth(item) {
-  return item.startsWith(CHILD_PREFIX) ? 1 : 0;
-}
-
-export function itemText(item) {
-  return item.startsWith(CHILD_PREFIX) ? item.slice(CHILD_PREFIX.length) : item;
-}
 
 /** Leading-whitespace width of a line, counting a tab as two columns. */
 function indentWidth(line) {
@@ -27,33 +22,44 @@ function indentWidth(line) {
   return width;
 }
 
-/** Splits free-form textarea content into items, preserving one level of indent. */
+/** 1 when the line is indented under the one above, else 0. */
+export function itemDepth(item) {
+  return indentWidth(item) >= CHILD_PREFIX.length ? 1 : 0;
+}
+
+/** Whether the line was written with a leading bullet. */
+export function hasBullet(item) {
+  return /^-(\s|$)/.test(item.trim());
+}
+
+/** The line's text without indentation or bullet marker. */
+export function itemText(item) {
+  const t = item.trim();
+  return (t.startsWith("- ") ? t.slice(2) : t.startsWith("-") ? t.slice(1) : t).trim();
+}
+
+/**
+ * Textarea content -> stored lines: each line as typed, trailing spaces
+ * trimmed, blank lines and bare bullets (a `-` with nothing after it) dropped.
+ */
 export function linesToItems(text) {
   return text
     .split("\n")
-    .map((line) => {
-      const indent = indentWidth(line);
-      const t = line.trim();
-      const body = t.startsWith("- ") ? t.slice(2) : t.startsWith("-") ? t.slice(1) : t;
-      return { indent, text: body.trim() };
-    })
-    .filter((row) => row.text.length > 0)
-    .map((row) => (row.indent >= CHILD_PREFIX.length ? CHILD_PREFIX + row.text : row.text));
+    .map((line) => line.replace(/\s+$/, ""))
+    .filter((line) => itemText(line).length > 0);
 }
 
-/** Renders items back into bullet lines for a textarea, indent included. */
+/** Stored lines -> textarea content, unchanged. */
 export function itemsToText(items) {
-  if (items.length === 0) return "- ";
-  return items.map(itemToLine).join("\n") + "\n- ";
+  return items.join("\n");
 }
 
-/** One item as a markdown bullet line, e.g. "  - 세부 항목". */
+/** One stored line as it should appear in copied text — as written. */
 export function itemToLine(item) {
-  const indent = itemDepth(item) === 1 ? CHILD_PREFIX : "";
-  return `${indent}- ${itemText(item)}`;
+  return item;
 }
 
-/** Builds the text for "주간 전체 복사": one h3 per day, bullets underneath. */
+/** Builds the text for "주간 전체 복사": one h3 per day, lines as written. */
 export function buildWeeklyCopyText(weekAnchorDate, days) {
   const { year, week } = isoWeekNumber(weekAnchorDate);
   const nonEmpty = days.filter((d) => d.items.length > 0);
@@ -63,10 +69,7 @@ export function buildWeeklyCopyText(weekAnchorDate, days) {
 
   let out = `## ${year}년 ${week}주차 (${range})\n\n`;
   out += nonEmpty
-    .map((d) => {
-      const body = d.items.map(itemToLine).join("\n");
-      return `### ${shortLabel(d.date)} (${d.weekday})\n${body}`;
-    })
+    .map((d) => `### ${shortLabel(d.date)} (${d.weekday})\n${d.items.join("\n")}`)
     .join("\n\n");
   return out;
 }

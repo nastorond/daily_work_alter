@@ -4,7 +4,8 @@ import { CHILD_PREFIX } from "./markdown.js";
  * Shared key handling for the bullet textareas — the daily input, the weekly
  * "today" input, and the weekly inline edit all behave identically:
  *
- *   Enter       new bullet on the next line, keeping the current indent
+ *   Enter       new line, keeping the current indent. No bullet is added —
+ *               a line gets `- ` only if the user types one
  *   Tab         indent one level (children only go one deep)
  *   Shift+Tab   outdent
  *   Ctrl+Enter  submit
@@ -16,12 +17,6 @@ import { CHILD_PREFIX } from "./markdown.js";
 export function attachBulletEditor(textarea, { onChange, onSubmit } = {}) {
   const changed = () => onChange?.();
   const submit = () => onSubmit?.();
-
-  textarea.addEventListener("focus", () => {
-    if (textarea.value === "") {
-      setValue(textarea, "- ", "- ".length);
-    }
-  });
 
   textarea.addEventListener("input", changed);
 
@@ -60,13 +55,13 @@ function setValue(textarea, value, caret) {
   textarea.selectionStart = textarea.selectionEnd = caret;
 }
 
-/** Enter: open a new bullet at the same indent level as the current line. */
+/** Enter: a new line at the same indent level as the current one. */
 function insertBullet(textarea) {
   const { value, selectionStart: from, selectionEnd: to } = textarea;
   const start = lineStart(value, from);
   const leading = /^[ \t]*/.exec(value.slice(start))[0];
   const indent = leading.length >= CHILD_PREFIX.length ? CHILD_PREFIX : "";
-  const insert = `\n${indent}- `;
+  const insert = `\n${indent}`;
   setValue(textarea, value.slice(0, from) + insert + value.slice(to), from + insert.length);
 }
 

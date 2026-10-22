@@ -57,18 +57,26 @@ fn frontmatter_value<'a>(fm: &'a str, key: &str) -> Option<&'a str> {
         .map(|v| v.trim())
 }
 
-/// Nesting is carried inside the item string itself: a child item starts with
-/// two spaces. Only one level is supported, so deeper indentation clamps to it.
-/// Keeping items as plain strings means the Rust <-> JS command signatures and
-/// the on-disk format stay unchanged.
+/// Indentation (two columns or more) marks a line as a child of the one above.
+/// Only one level is distinguished; deeper indentation counts the same.
 pub const CHILD_PREFIX: &str = "  ";
 
-/// Splits an item into (is_child, trimmed text).
+/// Items are stored **exactly as written** — one per line, indentation and any
+/// leading `- ` kept as the user typed them.
+///
+/// This used to be normalised: every line was stripped of its dash on save and
+/// had `- ` stamped back on when written, displayed or copied. That threw away
+/// whether a line had a bullet at all, so plain lines came back with one, and a
+/// heading typed as `### 학습` was saved as `- ### 학습`. Now nothing is added.
+///
+/// Splits a stored line into (is_child, text without indentation or bullet) for
+/// the places that need the structure rather than the raw line — rendering and
+/// the report export.
 pub fn split_depth(item: &str) -> (bool, &str) {
-    match item.strip_prefix(CHILD_PREFIX) {
-        Some(rest) => (true, rest.trim()),
-        None => (false, item.trim()),
-    }
+    let is_child = indent_width(item) >= CHILD_PREFIX.len();
+    let t = item.trim();
+    let t = t.strip_prefix("- ").or_else(|| t.strip_prefix('-')).unwrap_or(t);
+    (is_child, t.trim())
 }
 
 /// Leading-whitespace width of a line, counting a tab as two columns.
@@ -79,25 +87,25 @@ fn indent_width(line: &str) -> usize {
         .sum()
 }
 
+/// Repairs what the old normaliser did to headings: it prefixed `- ` to every
+/// line, so `### 학습` was saved as `- ### 학습`. A bullet in front of a markdown
+/// heading is never something a person types, so it is safe to take back off.
+fn repair_legacy_heading(line: &str) -> String {
+    let indent_len = line.len() - line.trim_start().len();
+    let (indent, rest) = line.split_at(indent_len);
+    match rest.strip_prefix("- ") {
+        Some(after) if after.starts_with('#') => format!("{indent}{after}"),
+        _ => line.to_string(),
+    }
+}
+
+/// Body lines as written, minus blank lines and bare bullets (`-` with nothing
+/// after it, the leftover of an empty line in the old editor).
 fn parse_body(body: &str) -> Vec<String> {
     body.lines()
-        .filter_map(|line| {
-            let indent = indent_width(line);
-            let t = line.trim();
-            if t.is_empty() {
-                return None;
-            }
-            let stripped = t.strip_prefix("- ").or_else(|| t.strip_prefix('-')).unwrap_or(t);
-            let stripped = stripped.trim();
-            if stripped.is_empty() {
-                return None;
-            }
-            Some(if indent >= CHILD_PREFIX.len() {
-                format!("{CHILD_PREFIX}{stripped}")
-            } else {
-                stripped.to_string()
-            })
-        })
+        .map(|line| line.trim_end())
+        .filter(|line| !split_depth(line).1.is_empty())
+        .map(repair_legacy_heading)
         .collect()
 }
 
@@ -150,15 +158,11 @@ pub fn write_log(cfg: &Config, date: &str, items: &[String]) -> std::io::Result<
     out.push_str(&format!("updated: {updated}\n"));
     out.push_str("---\n\n");
     for item in items {
-        let (is_child, text) = split_depth(item);
-        if text.is_empty() {
+        let line = item.trim_end();
+        if split_depth(line).1.is_empty() {
             continue;
         }
-        if is_child {
-            out.push_str(CHILD_PREFIX);
-        }
-        out.push_str("- ");
-        out.push_str(text);
+        out.push_str(line);
         out.push('\n');
     }
     fs::write(path, out)
@@ -219,52 +223,61 @@ mod tests {
     }
 
     #[test]
-    fn flat_items_keep_no_indent() {
-        assert_eq!(items("- 가\n- 나"), vec!["가", "나"]);
-    }
-
-    #[test]
-    fn two_spaces_make_a_child() {
-        assert_eq!(items("- 부모\n  - 자식"), vec!["부모", "  자식"]);
-    }
-
-    #[test]
-    fn a_tab_counts_as_a_child() {
-        assert_eq!(items("- 부모\n\t- 자식"), vec!["부모", "  자식"]);
-    }
-
-    #[test]
-    fn deeper_indent_clamps_to_one_level() {
-        assert_eq!(items("- 부모\n      - 손자"), vec!["부모", "  손자"]);
+    fn lines_are_kept_as_written() {
+        assert_eq!(items("- 가\n나\n  - 다"), vec!["- 가", "나", "  - 다"]);
     }
 
     #[test]
     fn blank_and_bare_dash_lines_are_dropped() {
-        assert_eq!(items("- 가\n\n-\n-   \n- 나"), vec!["가", "나"]);
+        assert_eq!(items("- 가\n\n-\n-   \n  - \n- 나"), vec!["- 가", "- 나"]);
     }
 
     #[test]
-    fn bullet_prefix_is_optional() {
-        assert_eq!(items("가\n  나"), vec!["가", "  나"]);
+    fn a_heading_the_old_normaliser_bulleted_is_repaired() {
+        assert_eq!(items("- ### 태양광\n- 내용"), vec!["### 태양광", "- 내용"]);
+        // A heading typed without the dash is untouched.
+        assert_eq!(items("#### 학습"), vec!["#### 학습"]);
     }
 
     #[test]
-    fn split_depth_strips_the_child_prefix() {
+    fn split_depth_reads_indent_and_strips_the_bullet() {
         assert_eq!(split_depth("부모"), (false, "부모"));
+        assert_eq!(split_depth("- 부모"), (false, "부모"));
+        assert_eq!(split_depth("  - 자식"), (true, "자식"));
         assert_eq!(split_depth("  자식"), (true, "자식"));
+        assert_eq!(split_depth("\t- 자식"), (true, "자식"));
+        assert_eq!(split_depth("      - 손자"), (true, "손자"));
     }
 
     #[test]
     fn frontmatter_is_split_off_when_present() {
         let (fm, body) = split_frontmatter("---\ndate: 2026-09-07\n---\n\n- 가\n");
         assert!(fm.unwrap().contains("date: 2026-09-07"));
-        assert_eq!(parse_body(body), vec!["가"]);
+        assert_eq!(parse_body(body), vec!["- 가"]);
     }
 
     #[test]
     fn missing_frontmatter_treats_everything_as_body() {
-        let (fm, body) = split_frontmatter("- 가\n- 나\n");
+        let (fm, body) = split_frontmatter("- 가\n나\n");
         assert!(fm.is_none());
-        assert_eq!(parse_body(body), vec!["가", "나"]);
+        assert_eq!(parse_body(body), vec!["- 가", "나"]);
+    }
+
+    /// What is typed is what is written: no dash appears on a line that had none.
+    #[test]
+    fn write_then_read_round_trips_verbatim() {
+        let dir = std::env::temp_dir().join("dwa_storage_verbatim");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut cfg = Config::default();
+        cfg.log_dir = Some(dir.to_string_lossy().to_string());
+        let typed = vec![
+            "### 학습".to_string(),
+            "평문 한 줄".to_string(),
+            "- 불릿 줄".to_string(),
+            "  - 하위 불릿".to_string(),
+            "  하위 평문".to_string(),
+        ];
+        write_log(&cfg, "2026-10-22", &typed).unwrap();
+        assert_eq!(read_log(&cfg, "2026-10-22").items, typed);
     }
 }
