@@ -271,14 +271,6 @@ button.btn.ghost {
   line-height: 1.6;
 }
 
-.week-day.today {
-  background: var(--bg-soft);
-  margin: 0 -16px;
-  padding: 10px 16px;
-  border-top: 2px solid var(--accent);
-  border-bottom: none;
-}
-
 /* --- settings modal --- */
 
 .modal-overlay {
@@ -714,4 +706,15 @@ button.btn.ghost {
 /* A line written without "- " is shown without a bullet. */
 .week-day .day-items li.plain {
   list-style: none;
+}
+
+/* Today sits in the list like any other day; only the label marks it. */
+.week-day.is-today .day-label {
+  color: var(--accent);
+}
+
+.week-day .today-tag {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
 }
