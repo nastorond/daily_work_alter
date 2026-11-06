@@ -80,6 +80,7 @@ pub fn run() {
             commands::export_preview,
             commands::export_write,
             commands::export_default_name,
+            commands::list_weeks,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

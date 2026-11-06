@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { mountHeader } from "./header.js";
-import { addDays, isoWeekNumber, shortLabel, todayStr } from "../util/date.js";
+import { addDays, isoWeekNumber, mondayOf, shortLabel, todayStr } from "../util/date.js";
 import {
   buildWeeklyCopyText,
   hasBullet,
@@ -11,19 +11,19 @@ import {
 } from "../util/markdown.js";
 import { attachBulletEditor } from "../util/bullet-editor.js";
 import { openExportPreview } from "./export-preview.js";
+import { renderHistory } from "./history.js";
 
 /**
- * The week view.
+ * The week view, for the week containing `anchor` (today by default).
  *
- * `weekOffset` is 0 for this week or -1 for last week — and no further. The
- * report is "지난주 실적", so the week before this one has to be reachable (a
- * report missed on Friday gets written on Monday, when "this week" is empty);
- * anything older is history, which the log folder already keeps.
+ * Any past week can be shown: "← 목록" goes to the "이전 기록" list, and ◀ ▶
+ * step a week at a time. There is no step past the current week — nothing has
+ * been written there yet. Today's always-open input only appears when the
+ * week shown is the current one.
  */
-export async function renderWeekly(root, weekOffset = 0) {
+export async function renderWeekly(root, anchor = todayStr()) {
   const today = todayStr();
-  const isCurrent = weekOffset === 0;
-  const anchor = isCurrent ? today : addDays(today, -7);
+  const isCurrent = mondayOf(anchor) === mondayOf(today);
 
   const days = await api.readWeek(anchor);
   const { year, week } = isoWeekNumber(anchor);
@@ -39,13 +39,15 @@ export async function renderWeekly(root, weekOffset = 0) {
   body.className = "body";
   root.appendChild(body);
 
-  const switcher = document.createElement("div");
-  switcher.className = "week-switch";
-  switcher.innerHTML = `
-    <button class="seg ${isCurrent ? "" : "active"}" data-offset="-1">지난주</button>
-    <button class="seg ${isCurrent ? "active" : ""}" data-offset="0">이번 주</button>
+  const nav = document.createElement("div");
+  nav.className = "week-nav";
+  nav.innerHTML = `
+    <button class="nav-btn" data-go="list">← 목록</button>
+    <span class="nav-spacer"></span>
+    <button class="nav-btn" data-go="prev" title="이전 주">◀ 이전 주</button>
+    <button class="nav-btn" data-go="next" title="다음 주" ${isCurrent ? "disabled" : ""}>다음 주 ▶</button>
   `;
-  body.appendChild(switcher);
+  body.appendChild(nav);
 
   const pastList = document.createElement("div");
   pastList.className = "week-days";
@@ -161,12 +163,13 @@ export async function renderWeekly(root, weekOffset = 0) {
     api.closeWindow();
   }
 
-  for (const btn of switcher.querySelectorAll(".seg")) {
+  for (const btn of nav.querySelectorAll(".nav-btn")) {
     btn.addEventListener("click", async () => {
-      const offset = Number(btn.dataset.offset);
-      if (offset === weekOffset) return;
+      if (btn.disabled) return;
       await saveTodayInput();
-      renderWeekly(root, offset);
+      const go = btn.dataset.go;
+      if (go === "list") renderHistory(root);
+      else renderWeekly(root, addDays(anchor, go === "prev" ? -7 : 7));
     });
   }
 

@@ -9,6 +9,7 @@ export const api = {
   readLog: (date) => invoke("read_log", { date }),
   writeLog: (date, items) => invoke("write_log", { date, items }),
   readWeek: (anchor) => invoke("read_week", { anchor }),
+  listWeeks: () => invoke("list_weeks"),
   getViewMode: () => invoke("get_view_mode"),
   snooze: () => invoke("snooze"),
   skipToday: () => invoke("skip_today"),

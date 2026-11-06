@@ -32,6 +32,7 @@ fn route_for(mode: ViewMode) -> &'static str {
     match mode {
         ViewMode::Daily => "daily",
         ViewMode::Weekly => "weekly",
+        ViewMode::History => "history",
     }
 }
 

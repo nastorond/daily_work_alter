@@ -498,37 +498,130 @@ button.btn.ghost {
   align-self: center;
 }
 
-/* ── 지난주 / 이번 주 전환 ─────────────────────────────── */
+/* ── 주간 화면: 목록 / 이전·다음 주 이동 ─────────────────── */
 
 /* .body is a scrolling flex column: without flex-shrink:0 a long week squeezes
-   this to zero height (overflow:hidden drops its min-height to 0), and without
-   align-self it stretches across the whole row. */
-.week-switch {
-  display: inline-flex;
+   this bar to zero height. */
+.week-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
-  align-self: flex-start;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
 }
 
-.week-switch .seg {
-  border: none;
+.week-nav .nav-spacer {
+  flex: 1;
+}
+
+.nav-btn {
+  border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);
+  border-radius: 6px;
   font-size: 12px;
-  padding: 4px 14px;
+  padding: 4px 10px;
   cursor: pointer;
 }
 
-.week-switch .seg + .seg {
-  border-left: 1px solid var(--border);
-}
-
-.week-switch .seg.active {
+.nav-btn:hover:not(:disabled) {
   background: var(--bg-soft);
   color: var(--text);
-  font-weight: 600;
+}
+
+.nav-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── 이전 기록 목록 ─────────────────────────────────────── */
+
+.body.history {
+  gap: 2px;
+}
+
+.history-month {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.history-month:first-child {
+  margin-top: 0;
+}
+
+/* Rows are buttons so the whole row is the click target. */
+.history-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  padding: 7px 10px;
+  cursor: pointer;
+  font: inherit;
+  flex-shrink: 0;
+}
+
+.history-row:hover {
+  background: var(--bg-soft);
+  border-color: var(--border);
+}
+
+.history-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.history-week {
+  font-weight: 700;
+  min-width: 46px;
+}
+
+.history-range {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-marks {
+  display: inline-flex;
+  gap: 2px;
+  align-self: center;
+}
+
+.history-marks .mark {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--accent);
+  box-sizing: border-box;
+}
+
+.history-marks .mark.on {
+  background: var(--accent);
+}
+
+.history-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.history-headings {
+  margin: 2px 0 0 56px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-headings:empty {
+  display: none;
 }
 
 /* Lines written as markdown headings ("#### 학습") read as section titles. */

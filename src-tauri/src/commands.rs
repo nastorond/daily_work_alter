@@ -65,6 +65,7 @@ pub fn get_view_mode(state: State<AppData>) -> String {
     match scheduler::view_mode_for(&cfg, Local::now()) {
         scheduler::ViewMode::Daily => "daily".into(),
         scheduler::ViewMode::Weekly => "weekly".into(),
+        scheduler::ViewMode::History => "history".into(),
     }
 }
 
@@ -128,4 +129,10 @@ pub fn export_write(
 ) -> Result<(), String> {
     let cfg = state.config.lock().unwrap().clone();
     crate::export::write(&cfg, &anchor, &lines, &dest)
+}
+
+#[tauri::command]
+pub fn list_weeks(state: State<AppData>) -> Vec<crate::data::storage::WeekSummary> {
+    let cfg = state.config.lock().unwrap().clone();
+    crate::data::storage::list_weeks(&cfg)
 }

@@ -11,6 +11,9 @@ use tauri::{AppHandle, Manager};
 pub enum ViewMode {
     Daily,
     Weekly,
+    /// The "이전 기록" week list. Only ever opened by hand; the scheduler never
+    /// picks it.
+    History,
 }
 
 fn parse_time_today(hhmm: &str, today: DateTime<Local>) -> Option<DateTime<Local>> {

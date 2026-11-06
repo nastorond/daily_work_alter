@@ -14,6 +14,7 @@ fn open_path(app: &AppHandle, path: std::path::PathBuf) {
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let write_now = MenuItemBuilder::with_id("write_now", "지금 작성하기").build(app)?;
     let view_week = MenuItemBuilder::with_id("view_week", "이번 주 보기").build(app)?;
+    let view_history = MenuItemBuilder::with_id("view_history", "이전 기록 보기").build(app)?;
     let settings = MenuItemBuilder::with_id("settings", "설정").build(app)?;
     let open_config = MenuItemBuilder::with_id("open_config", "config.json 열기").build(app)?;
     let open_log_dir = MenuItemBuilder::with_id("open_log_dir", "로그 폴더 열기").build(app)?;
@@ -41,6 +42,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let mut builder = MenuBuilder::new(app)
         .item(&write_now)
         .item(&view_week)
+        .item(&view_history)
         .separator()
         .item(&settings)
         .item(&open_config)
@@ -69,6 +71,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "write_now" => { window::show_window(app, ViewMode::Daily, false); }
             "view_week" => { window::show_window(app, ViewMode::Weekly, false); }
+            "view_history" => { window::show_window(app, ViewMode::History, false); }
             "settings" => window::show_settings(app),
             "open_config" => open_path(app, crate::data::config::config_path()),
             "open_log_dir" => {
