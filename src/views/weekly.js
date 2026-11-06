@@ -2,7 +2,6 @@ import { api } from "../api.js";
 import { mountHeader } from "./header.js";
 import { addDays, isoWeekNumber, mondayOf, shortLabel, todayStr } from "../util/date.js";
 import {
-  buildWeeklyCopyText,
   hasBullet,
   itemDepth,
   itemText,
@@ -10,7 +9,7 @@ import {
   linesToItems,
 } from "../util/markdown.js";
 import { attachBulletEditor } from "../util/bullet-editor.js";
-import { openExportPreview } from "./export-preview.js";
+import { openCopyProjects } from "./copy-projects.js";
 import { renderHistory } from "./history.js";
 
 /**
@@ -56,8 +55,7 @@ export async function renderWeekly(root, anchor = todayStr()) {
   const footer = document.createElement("div");
   footer.className = "footer";
   footer.innerHTML = `
-    <button class="btn" id="btn-copy">주간 전체 복사</button>
-    <button class="btn" id="btn-hwp">한글 문서로 저장</button>
+    <button class="btn" id="btn-copy">프로젝트별 복사</button>
     <button class="btn primary" id="btn-save-close">${isCurrent ? "저장하고 닫기" : "닫기"}</button>
   `;
   root.appendChild(footer);
@@ -174,17 +172,9 @@ export async function renderWeekly(root, anchor = todayStr()) {
   }
 
   footer.querySelector("#btn-copy").addEventListener("click", async () => {
-    const allDays = days.map((d) => (todayEntry && d.isToday ? todayEntry : d));
-    const text = buildWeeklyCopyText(anchor, allDays);
-    await navigator.clipboard.writeText(text);
-    const btn = footer.querySelector("#btn-copy");
-    const original = btn.textContent;
-    btn.textContent = "복사됨!";
-    setTimeout(() => (btn.textContent = original), 1200);
-  });
-  footer.querySelector("#btn-hwp").addEventListener("click", async () => {
     await saveTodayInput();
-    openExportPreview(anchor);
+    const allDays = days.map((d) => (todayEntry && d.isToday ? todayEntry : d));
+    openCopyProjects(`${year}년 ${week}주차 (${shortLabel(first)} ~ ${shortLabel(last)})`, allDays);
   });
   footer.querySelector("#btn-save-close").addEventListener("click", saveAndClose);
 

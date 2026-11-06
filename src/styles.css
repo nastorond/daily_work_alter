@@ -406,9 +406,9 @@ button.btn.ghost {
   line-height: 1.6;
 }
 
-/* ── 한글 내보내기 미리보기 ───────────────────────────────── */
+/* ── 프로젝트별 복사 ─────────────────────────────────────── */
 
-.modal.export-preview {
+.modal.copy-projects {
   width: 92%;
   max-width: 580px;
   max-height: 86%;
@@ -416,86 +416,93 @@ button.btn.ghost {
   flex-direction: column;
 }
 
-.export-preview .body {
+.copy-projects .body {
   overflow-y: auto;
   flex: 1;
 }
 
-.xp-hint {
-  margin: 0 0 10px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.xp-lines {
+.cp-top {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.xp-row {
-  display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  padding: 3px 4px;
-  border-radius: 4px;
-  font-size: 13px;
-  line-height: 1.5;
+  flex-shrink: 0;
 }
 
-.xp-row:hover {
-  background: var(--bg-soft);
+.cp-week {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
-/* The level chip is the only control here, so it reads as a button. */
-.xp-level {
-  flex: 0 0 30px;
+.cp-formats {
+  display: inline-flex;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cp-formats .seg {
+  border: none;
+  background: transparent;
   color: var(--text-muted);
   font-size: 12px;
-  font-weight: 600;
-  padding: 1px 0;
+  padding: 4px 10px;
   cursor: pointer;
 }
 
-.xp-level:hover {
-  border-color: var(--accent, #3b82f6);
+.cp-formats .seg + .seg {
+  border-left: 1px solid var(--border);
+}
+
+.cp-formats .seg.active {
+  background: var(--bg-soft);
   color: var(--text);
+  font-weight: 600;
 }
 
-.xp-date {
-  flex: 0 0 42px;
-  font-size: 11px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
+.cp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.xp-text {
+.cp-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  flex-shrink: 0;
+}
+
+.cp-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cp-name {
   flex: 1;
-  min-width: 0;
-}
-
-/* Indentation mirrors how the levels will sit in the document. */
-.xp-row.lvl-heading .xp-text {
   font-weight: 700;
+  font-size: 13px;
 }
 
-.xp-row.lvl-item .xp-text {
-  padding-left: 10px;
-}
-
-.xp-row.lvl-detail .xp-text {
-  padding-left: 24px;
-  color: var(--text-muted);
-}
-
-.xp-filename {
-  flex: 1;
+.cp-copy {
+  padding: 3px 10px;
   font-size: 12px;
-  color: var(--text-muted);
-  align-self: center;
+}
+
+.cp-preview {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg-soft);
+  border-radius: 6px;
+  padding: 6px 8px;
 }
 
 /* ── 주간 화면: 목록 / 이전·다음 주 이동 ─────────────────── */

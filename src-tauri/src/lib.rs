@@ -1,7 +1,6 @@
 mod commands;
 mod data;
 mod devtools;
-mod export;
 mod scheduler;
 mod shell;
 
@@ -49,7 +48,6 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             window::focus_or_open(app);
         }))
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
@@ -77,9 +75,6 @@ pub fn run() {
             commands::snooze,
             commands::skip_today,
             commands::close_window,
-            commands::export_preview,
-            commands::export_write,
-            commands::export_default_name,
             commands::list_weeks,
         ])
         .setup(move |app| {

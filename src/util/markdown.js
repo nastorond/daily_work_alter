@@ -1,5 +1,3 @@
-import { isoWeekNumber, shortLabel } from "./date.js";
-
 /**
  * Lines are kept exactly as written — indentation, and a leading `- ` only if
  * the user typed one. Mirrors src-tauri/src/data/storage.rs.
@@ -57,19 +55,4 @@ export function itemsToText(items) {
 /** One stored line as it should appear in copied text — as written. */
 export function itemToLine(item) {
   return item;
-}
-
-/** Builds the text for "주간 전체 복사": one h3 per day, lines as written. */
-export function buildWeeklyCopyText(weekAnchorDate, days) {
-  const { year, week } = isoWeekNumber(weekAnchorDate);
-  const nonEmpty = days.filter((d) => d.items.length > 0);
-  const first = days[0]?.date;
-  const last = days[days.length - 1]?.date;
-  const range = first && last ? `${shortLabel(first)} ~ ${shortLabel(last)}` : "";
-
-  let out = `## ${year}년 ${week}주차 (${range})\n\n`;
-  out += nonEmpty
-    .map((d) => `### ${shortLabel(d.date)} (${d.weekday})\n${d.items.join("\n")}`)
-    .join("\n\n");
-  return out;
 }
