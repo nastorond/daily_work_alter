@@ -86,8 +86,8 @@ pub fn clear_week(app: &AppHandle) -> usize {
     let cfg = current_config(app);
     let mut removed = 0;
     for d in week_workdays(&cfg) {
-        let path = storage::log_path(&cfg, &d.format("%Y-%m-%d").to_string());
-        if std::fs::remove_file(&path).is_ok() {
+        let date = d.format("%Y-%m-%d").to_string();
+        if storage::log_has_content(&cfg, &date) && storage::write_log(&cfg, &date, &[]).is_ok() {
             removed += 1;
         }
     }

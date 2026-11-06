@@ -82,6 +82,17 @@ pub fn run() {
 
             let cfg = config::load();
             let app_state = state::load();
+
+            // Logs moved from one file per day to one file per week. Fold any
+            // daily files left over into week files before anything reads them.
+            match data::storage::migrate_daily_files(&cfg) {
+                Ok(0) => {}
+                Ok(n) => data::log::line(&format!(
+                    "일별 기록 {n}개를 주간 파일로 합침 (원본은 logs\\{} 에 보관)",
+                    data::storage::DAILY_BACKUP_DIR
+                )),
+                Err(e) => data::log::line(&format!("일별 기록을 주간 파일로 합치지 못함: {e}")),
+            }
             app.manage(AppData {
                 config: Mutex::new(cfg.clone()),
                 state: Mutex::new(app_state),
