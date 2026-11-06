@@ -98,9 +98,20 @@ export async function renderWeekly(root, anchor = todayStr()) {
     const itemsEl = row.querySelector(".day-items");
     itemsEl.innerHTML = "";
     const textarea = document.createElement("textarea");
+    textarea.className = "inline-edit";
     textarea.value = itemsToText(day.items);
     itemsEl.appendChild(textarea);
-    textarea.focus();
+
+    // Grow to fit every line. A fixed two-line box showed only the tail of a
+    // long day, which made editing it guesswork.
+    const fit = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight + 2}px`;
+    };
+    fit();
+    textarea.addEventListener("input", fit);
+
+    textarea.focus({ preventScroll: true });
     textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
 
     const finish = async () => {
@@ -111,7 +122,8 @@ export async function renderWeekly(root, anchor = todayStr()) {
     };
 
     textarea.addEventListener("blur", finish);
-    attachBulletEditor(textarea, { onSubmit: () => textarea.blur() });
+    // Enter/Tab rewrite the value directly, which fires no "input" event.
+    attachBulletEditor(textarea, { onChange: fit, onSubmit: () => textarea.blur() });
   }
 
   // Today gets its own always-open input, but only in the current week; last

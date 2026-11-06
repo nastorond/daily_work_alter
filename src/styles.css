@@ -261,6 +261,16 @@ button.btn.ghost {
   min-height: 48px;
 }
 
+/* Editing a past day in place: the box is sized to its content from script,
+   so it shows every line instead of a scrolled two-line window. border-box so
+   that height = scrollHeight + border is exact. */
+.week-day textarea.inline-edit {
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.6;
+}
+
 .week-day.today {
   background: var(--bg-soft);
   margin: 0 -16px;
